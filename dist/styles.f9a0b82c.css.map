@@ -1,0 +1,1 @@
+{"version":3,"sources":["styles.css"],"names":[],"mappings":"AACA,UACE,QAAS,CACT,SAAU,CACV,qBACF","file":"styles.f9a0b82c.css","sourceRoot":"..","sourcesContent":["/* Basic CSS Reset */\nhtml, body {\n  margin: 0;\n  padding: 0;\n  box-sizing: border-box;\n}\n"]}

@@ -38939,6 +38939,7 @@ var OrbitControls_js_1 = require("three/examples/jsm/controls/OrbitControls.js")
 // Set up the scene
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight);
+// const shiftY = -30;
 var renderer = new THREE.WebGLRenderer();
 renderer.setClearColor(new THREE.Color(0xc8c8c8));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -38946,8 +38947,8 @@ document.body.appendChild(renderer.domElement);
 // Create an array to hold the cubes
 var cubes = [];
 // Create and position 10x10 cubes with random colors for each face
-for (var i = -5; i < 5; i++) {
-  for (var j = -5; j < 5; j++) {
+for (var i = -10; i < 10; i++) {
+  for (var j = -10; j < 10; j++) {
     var cubeGeometry = new THREE.BoxGeometry();
     var cubeMaterials = [];
     // Generate random colors for each face of the cube
@@ -38973,21 +38974,17 @@ for (var i = -5; i < 5; i++) {
     cubes.push(cube);
   }
 }
-camera.position.y = 25;
-camera.position.x = 0;
+camera.position.y = 22;
+camera.position.x = -22;
+camera.position.z = 0;
 // Create OrbitControls for camera manipulation
 var controls = new OrbitControls_js_1.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; // Add damping effect for smoother movement
 // Add rotation animation
 var animate = function animate() {
   requestAnimationFrame(animate);
-  //const time = Date.now() * 0.0001;
-  //camera.position.x = Math.sin(time) * 15;
-  //camera.position.z = Math.cos(time) * 15;
-  //  camera.position.y = Math.cos(time) * 5;
-  //camera.lookAt(0, 0, 0);
   renderer.render(scene, camera);
-  controls.update(); // Update the controls
+  controls.update();
 };
 animate();
 },{"three":"node_modules/three/build/three.module.js","three/examples/jsm/controls/OrbitControls.js":"node_modules/three/examples/jsm/controls/OrbitControls.js"}],"node_modules/parcel-bundler/src/builtins/hmr-runtime.js":[function(require,module,exports) {
@@ -39015,7 +39012,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "61154" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "53383" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];

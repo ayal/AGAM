@@ -8,18 +8,20 @@ const camera = new THREE.PerspectiveCamera(
   window.innerWidth / window.innerHeight,
 );
 
+// const shiftY = -30;
+
 const renderer = new THREE.WebGLRenderer();
 renderer.setClearColor(new THREE.Color(0xc8c8c8));
-
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
 
 // Create an array to hold the cubes
 const cubes = [];
 
 // Create and position 10x10 cubes with random colors for each face
-for (let i = -5; i < 5; i++) {
-  for (let j = -5; j < 5; j++) {
+for (let i = -10; i < 10; i++) {
+  for (let j = -10; j < 10; j++) {
     const cubeGeometry = new THREE.BoxGeometry();
     const cubeMaterials = [];
 
@@ -44,8 +46,10 @@ for (let i = -5; i < 5; i++) {
   }
 }
 
-camera.position.y = 25;
-camera.position.x = 0;
+camera.position.y = 22;
+camera.position.x = -22;
+camera.position.z = 0;
+
 
 // Create OrbitControls for camera manipulation
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -54,15 +58,10 @@ controls.enableDamping = true; // Add damping effect for smoother movement
 // Add rotation animation
 const animate = () => {
   requestAnimationFrame(animate);
-
-  //const time = Date.now() * 0.0001;
-  //camera.position.x = Math.sin(time) * 15;
-  //camera.position.z = Math.cos(time) * 15;
-  //  camera.position.y = Math.cos(time) * 5;
-  //camera.lookAt(0, 0, 0);
-
+ 
   renderer.render(scene, camera);
-  controls.update(); // Update the controls
+  controls.update();   
 };
 
 animate();
+
