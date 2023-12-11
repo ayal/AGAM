@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 
 // Set up the scene
 const scene = new THREE.Scene();
@@ -40,7 +40,7 @@ for (let i = -10; i < 10; i++) {
     }
 
     const cube = new THREE.Mesh(cubeGeometry, cubeMaterials);
-    cube.position.set(i, i, j); // Position cubes evenly in a grid and offset along the Z-axis
+    cube.position.set(i, i+1, j+0.5); // Position cubes evenly in a grid and offset along the Z-axis
     scene.add(cube);
     cubes.push(cube);
   }
@@ -52,7 +52,7 @@ camera.position.z = 0;
 
 
 // Create OrbitControls for camera manipulation
-const controls = new OrbitControls(camera, renderer.domElement);
+const controls = new TrackballControls(camera, renderer.domElement);
 controls.enableDamping = true; // Add damping effect for smoother movement
 
 // Add rotation animation
