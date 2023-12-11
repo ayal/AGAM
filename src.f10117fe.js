@@ -38946,8 +38946,8 @@ document.body.appendChild(renderer.domElement);
 // Create an array to hold the cubes
 var cubes = [];
 // Create and position 10x10 cubes with random colors for each face
-for (var i = -5; i < 5; i++) {
-  for (var j = -5; j < 5; j++) {
+for (var i = -10; i < 10; i++) {
+  for (var j = -10; j < 10; j++) {
     var cubeGeometry = new THREE.BoxGeometry();
     var cubeMaterials = [];
     // Generate random colors for each face of the cube
@@ -38973,7 +38973,7 @@ for (var i = -5; i < 5; i++) {
     cubes.push(cube);
   }
 }
-camera.position.y = 25;
+camera.position.y = 35;
 camera.position.x = 0;
 // Create OrbitControls for camera manipulation
 var controls = new OrbitControls_js_1.OrbitControls(camera, renderer.domElement);
@@ -39015,7 +39015,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "61154" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "50700" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
