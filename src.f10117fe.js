@@ -38620,7 +38620,7 @@ for (var i = -10; i < 10; i++) {
       }
     }
     var cube = new THREE.Mesh(cubeGeometry, cubeMaterials);
-    cube.position.set(i, i, j); // Position cubes evenly in a grid and offset along the Z-axis
+    cube.position.set(i, i + 1, j + 0.5); // Position cubes evenly in a grid and offset along the Z-axis
     scene.add(cube);
     cubes.push(cube);
   }
@@ -38663,7 +38663,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "53574" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "55793" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
