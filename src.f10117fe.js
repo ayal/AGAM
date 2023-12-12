@@ -38589,7 +38589,7 @@ var THREE = __importStar(require("three"));
 var TrackballControls_js_1 = require("three/examples/jsm/controls/TrackballControls.js");
 // Set up the scene
 var scene = new THREE.Scene();
-var camera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight);
+var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight);
 // const shiftY = -30;
 var renderer = new THREE.WebGLRenderer();
 renderer.setClearColor(new THREE.Color(0xc8c8c8));
@@ -38637,8 +38637,8 @@ for (var i = -10; i < 10; i++) {
     cubes.push(cube);
   }
 }
-camera.position.y = 19;
-camera.position.x = -19;
+camera.position.y = 22;
+camera.position.x = -22;
 camera.position.z = 0;
 // Create OrbitControls for camera manipulation
 var controls = new TrackballControls_js_1.TrackballControls(camera, renderer.domElement);
@@ -38675,7 +38675,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "51109" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "55534" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
