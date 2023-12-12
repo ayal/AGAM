@@ -38599,6 +38599,10 @@ document.body.appendChild(renderer.domElement);
 var cubes = [];
 var whiteProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
 var blackProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
+whiteProbabilities[1] = 1 - whiteProbabilities[0];
+blackProbabilities[1] = 1 - blackProbabilities[0];
+whiteProbabilities[3] = 1 - whiteProbabilities[2];
+blackProbabilities[3] = 1 - blackProbabilities[2];
 // Create and position 10x10 cubes with random colors for each face
 for (var i = -10; i < 10; i++) {
   for (var j = -10; j < 10; j++) {
@@ -38671,7 +38675,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "49635" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "51109" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
