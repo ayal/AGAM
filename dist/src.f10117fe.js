@@ -38589,7 +38589,7 @@ var THREE = __importStar(require("three"));
 var TrackballControls_js_1 = require("three/examples/jsm/controls/TrackballControls.js");
 // Set up the scene
 var scene = new THREE.Scene();
-var camera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight);
+var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight);
 // const shiftY = -30;
 var renderer = new THREE.WebGLRenderer();
 renderer.setClearColor(new THREE.Color(0xc8c8c8));
@@ -38597,6 +38597,12 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 // Create an array to hold the cubes
 var cubes = [];
+var whiteProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
+var blackProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
+whiteProbabilities[1] = 1 - whiteProbabilities[0];
+blackProbabilities[1] = 1 - blackProbabilities[0];
+whiteProbabilities[3] = 1 - whiteProbabilities[2];
+blackProbabilities[3] = 1 - blackProbabilities[2];
 // Create and position 10x10 cubes with random colors for each face
 for (var i = -10; i < 10; i++) {
   for (var j = -10; j < 10; j++) {
@@ -38604,12 +38610,18 @@ for (var i = -10; i < 10; i++) {
     var cubeMaterials = [];
     // Generate random colors for each face of the cube
     for (var k = 0; k < 6; k++) {
-      // Adjusted probability: Increase the chances of selecting white or black
-      if (Math.random() < 0.6) {
+      if (k === 4 || k === 5) {
         cubeMaterials.push(new THREE.MeshBasicMaterial({
           color: 0xffffff
         })); // White
-      } else if (Math.random() < 0.6) {
+        continue;
+      }
+      // Adjusted probability: Increase the chances of selecting white or black
+      if (Math.random() < whiteProbabilities[k]) {
+        cubeMaterials.push(new THREE.MeshBasicMaterial({
+          color: 0xffffff
+        })); // White
+      } else if (Math.random() < blackProbabilities[k]) {
         cubeMaterials.push(new THREE.MeshBasicMaterial({
           color: 0x000000
         })); // Black
@@ -38663,7 +38675,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "55793" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "55534" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
