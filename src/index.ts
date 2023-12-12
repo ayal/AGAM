@@ -51,7 +51,7 @@ function onMouseClick(event) {
   if (intersects.length > 0) {
       // The first object in the intersects array is the one that was clicked
       const clickedMesh = intersects[0].object;
-      console.log('Clicked Mesh:', clickedMesh.position.x, clickedMesh.position.y, clickedMesh.position.z, clickedMesh.data);
+      //console.log('Clicked Mesh:', clickedMesh.position.x, clickedMesh.position.y, clickedMesh.position.z, clickedMesh.data);
 
   }
 }
@@ -65,11 +65,8 @@ const cubes = [];
 // [backtop, frontbottom, frontop, backbottom, ...]
 const whiteProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
 const blackProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
-whiteProbabilities[1] = 1 - whiteProbabilities[0];
-blackProbabilities[1] = 1 - blackProbabilities[0];
-whiteProbabilities[3] = 1 - whiteProbabilities[2];
-blackProbabilities[3] = 1 - blackProbabilities[2];
-const shouldColorBeTheSameProb = 0.6;
+// between 0.5 and 0.8
+const shouldColorBeTheSameProb  = Math.random() * (0.8 - 0.4) + 0.4;
 
 
 
@@ -79,47 +76,13 @@ for (let i = -10; i < 10; i++) {
     const cubeGeometry = new THREE.BoxGeometry();
     const cubeMaterials = [];
 
- 
-  
 
     // Generate random colors for each face of the cube
     for (let k = 0; k < 6; k++) {
-
-      /*const isFirstCube = i === -10 && j === -10;
-      if (isFirstCube) {
-        // first always red:
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xff0000 })); // Red
-        // x, y, z:
-        // -10, -9, -.95
-        continue;
-      }
-      const secondCube = i === -10 && j === -9;
-      if (secondCube) {
-        // first always green
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0x00ff00 })); // Green
-        continue;
-      }
-      const cubeNumber20 = i === -10 && j === 9;
-      if (cubeNumber20) {
-        // first always blue
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0x0000ff })); // Blue
-        continue;
-      }
-      const nextRowCube = i === -9 && j === -10;
-      if (nextRowCube) {
-        // first always yellow
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xffff00 })); // Yellow
-        // x, y, z:
-        // -9, -10, 0.5
-        continue;
-      }*/
-
       if (k === 4 || k === 5) {
         cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xffffff })); // White
         continue;
       }
-
-      const currentCubePosition = { x: i, y: i + 1, z: j + 0.5 };
 
       // Adjusted probability: Increase the chances of selecting white or black
       if (Math.random() < whiteProbabilities[k]) {
@@ -170,14 +133,17 @@ for (let i = -10; i < 10; i++) {
         const cubeOnTheLeft = cubes.find(cube => cube.data.i === i - 1 && cube.data.j === j);
 
         if (!cubeOnTheLeft) {
-          console.log('no cube on the left');
           continue;
         }
 
         const previousCubeMaterials = cubeOnTheLeft.material;
+        // if white or black continue:
+        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
+          continue;
+        }
+
         const previousColor = previousCubeMaterials[k].color.getHex();
         const newColor = brightenColor(previousColor, Math.random() * 10);
-        console.log('previousColor', previousColor, 'newColor', newColor);
         const newMaterials = new THREE.MeshBasicMaterial({ color: newColor });
         const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
         currentCube.material[k] =  newMaterials
@@ -189,14 +155,16 @@ for (let i = -10; i < 10; i++) {
         const cubeOneTheTop = cubes.find(cube => cube.data.i === i && cube.data.j === j - 1);
 
         if (!cubeOneTheTop) {
-          console.log('no cube on the top');
           continue;
         }
 
         const previousCubeMaterials = cubeOneTheTop.material;
+         // if white or black continue:
+         if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
+          continue;
+        }
         const previousColor = previousCubeMaterials[k].color.getHex();
         const newColor = brightenColor(previousColor, Math.random() * 10);
-        console.log('previousColor', previousColor, 'newColor', newColor);
         const newMaterials = new THREE.MeshBasicMaterial({ color: newColor });
         const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
         currentCube.material[k] =  newMaterials
@@ -208,14 +176,16 @@ for (let i = -10; i < 10; i++) {
         const cubeOneTheTopLeft = cubes.find(cube => cube.data.i === i - 1 && cube.data.j === j - 1);
 
         if (!cubeOneTheTopLeft) {
-          console.log('no cube on the top');
           continue;
         }
 
         const previousCubeMaterials = cubeOneTheTopLeft.material;
+         // if white or black continue:
+         if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
+          continue;
+        }
         const previousColor = previousCubeMaterials[k].color.getHex();
         const newColor = brightenColor(previousColor, Math.random() * 10);
-        console.log('previousColor', previousColor, 'newColor', newColor);
         const newMaterials = new THREE.MeshBasicMaterial({ color: newColor });
         const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
         currentCube.material[k] =  newMaterials
@@ -231,9 +201,8 @@ for (let i = -10; i < 10; i++) {
   }
 }
 
-camera.position.y = 22;
-camera.position.x = -22;
-//camera.position.z = 20;
+camera.position.y = 30;
+camera.position.x = -30;
 
 
 // Create OrbitControls for camera manipulation
