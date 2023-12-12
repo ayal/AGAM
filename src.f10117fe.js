@@ -38633,8 +38633,8 @@ for (var i = -10; i < 10; i++) {
     cubes.push(cube);
   }
 }
-camera.position.y = 22;
-camera.position.x = -22;
+camera.position.y = 19;
+camera.position.x = -19;
 camera.position.z = 0;
 // Create OrbitControls for camera manipulation
 var controls = new TrackballControls_js_1.TrackballControls(camera, renderer.domElement);
@@ -38671,7 +38671,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "59776" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "49635" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
