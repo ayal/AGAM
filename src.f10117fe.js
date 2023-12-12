@@ -38621,7 +38621,7 @@ function onMouseClick(event) {
   if (intersects.length > 0) {
     // The first object in the intersects array is the one that was clicked
     var clickedMesh = intersects[0].object;
-    console.log('Clicked Mesh:', clickedMesh.position.x, clickedMesh.position.y, clickedMesh.position.z, clickedMesh.data);
+    //console.log('Clicked Mesh:', clickedMesh.position.x, clickedMesh.position.y, clickedMesh.position.z, clickedMesh.data);
   }
 }
 renderer.domElement.addEventListener('click', onMouseClick);
@@ -38630,11 +38630,8 @@ var cubes = [];
 // [backtop, frontbottom, frontop, backbottom, ...]
 var whiteProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
 var blackProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
-whiteProbabilities[1] = 1 - whiteProbabilities[0];
-blackProbabilities[1] = 1 - blackProbabilities[0];
-whiteProbabilities[3] = 1 - whiteProbabilities[2];
-blackProbabilities[3] = 1 - blackProbabilities[2];
-var shouldColorBeTheSameProb = 0.6;
+// between 0.5 and 0.8
+var shouldColorBeTheSameProb = Math.random() * (0.8 - 0.4) + 0.4;
 // Create and position 10x10 cubes with random colors for each face
 for (var i = -10; i < 10; i++) {
   for (var j = -10; j < 10; j++) {
@@ -38642,45 +38639,12 @@ for (var i = -10; i < 10; i++) {
     var cubeMaterials = [];
     // Generate random colors for each face of the cube
     for (var k = 0; k < 6; k++) {
-      /*const isFirstCube = i === -10 && j === -10;
-      if (isFirstCube) {
-        // first always red:
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xff0000 })); // Red
-        // x, y, z:
-        // -10, -9, -.95
-        continue;
-      }
-      const secondCube = i === -10 && j === -9;
-      if (secondCube) {
-        // first always green
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0x00ff00 })); // Green
-        continue;
-      }
-      const cubeNumber20 = i === -10 && j === 9;
-      if (cubeNumber20) {
-        // first always blue
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0x0000ff })); // Blue
-        continue;
-      }
-      const nextRowCube = i === -9 && j === -10;
-      if (nextRowCube) {
-        // first always yellow
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xffff00 })); // Yellow
-        // x, y, z:
-        // -9, -10, 0.5
-        continue;
-      }*/
       if (k === 4 || k === 5) {
         cubeMaterials.push(new THREE.MeshBasicMaterial({
           color: 0xffffff
         })); // White
         continue;
       }
-      var currentCubePosition = {
-        x: i,
-        y: i + 1,
-        z: j + 0.5
-      };
       // Adjusted probability: Increase the chances of selecting white or black
       if (Math.random() < whiteProbabilities[k]) {
         cubeMaterials.push(new THREE.MeshBasicMaterial({
@@ -38725,13 +38689,15 @@ var _loop_1 = function _loop_1(i) {
           return cube.data.i === i - 1 && cube.data.j === j;
         });
         if (!cubeOnTheLeft) {
-          console.log('no cube on the left');
           continue;
         }
         var previousCubeMaterials = cubeOnTheLeft.material;
+        // if white or black continue:
+        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
+          continue;
+        }
         var previousColor = previousCubeMaterials[k].color.getHex();
         var newColor = brightenColor(previousColor, Math.random() * 10);
-        console.log('previousColor', previousColor, 'newColor', newColor);
         var newMaterials = new THREE.MeshBasicMaterial({
           color: newColor
         });
@@ -38747,13 +38713,15 @@ var _loop_1 = function _loop_1(i) {
           return cube.data.i === i && cube.data.j === j - 1;
         });
         if (!cubeOneTheTop) {
-          console.log('no cube on the top');
           continue;
         }
         var previousCubeMaterials = cubeOneTheTop.material;
+        // if white or black continue:
+        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
+          continue;
+        }
         var previousColor = previousCubeMaterials[k].color.getHex();
         var newColor = brightenColor(previousColor, Math.random() * 10);
-        console.log('previousColor', previousColor, 'newColor', newColor);
         var newMaterials = new THREE.MeshBasicMaterial({
           color: newColor
         });
@@ -38769,13 +38737,15 @@ var _loop_1 = function _loop_1(i) {
           return cube.data.i === i - 1 && cube.data.j === j - 1;
         });
         if (!cubeOneTheTopLeft) {
-          console.log('no cube on the top');
           continue;
         }
         var previousCubeMaterials = cubeOneTheTopLeft.material;
+        // if white or black continue:
+        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
+          continue;
+        }
         var previousColor = previousCubeMaterials[k].color.getHex();
         var newColor = brightenColor(previousColor, Math.random() * 10);
-        console.log('previousColor', previousColor, 'newColor', newColor);
         var newMaterials = new THREE.MeshBasicMaterial({
           color: newColor
         });
@@ -38795,9 +38765,8 @@ var _loop_1 = function _loop_1(i) {
 for (var i = -10; i < 10; i++) {
   _loop_1(i);
 }
-camera.position.y = 22;
-camera.position.x = -22;
-//camera.position.z = 20;
+camera.position.y = 30;
+camera.position.x = -30;
 // Create OrbitControls for camera manipulation
 var controls = new TrackballControls_js_1.TrackballControls(camera, renderer.domElement);
 controls.enableDamping = true; // Add damping effect for smoother movement
@@ -38833,7 +38802,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "63399" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "61169" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
