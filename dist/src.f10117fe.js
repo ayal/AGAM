@@ -38656,6 +38656,8 @@ for (var i = 0; i < heartShape.length; i++) {
 // turn 2d array "upside down":
 shapeArray.reverse();
 var shapeRandomColor = Math.random() * 0xffffff;
+var outerShapeRandomColor = Math.random() * 0xffffff;
+var shapeContourRandomColor = Math.random() * 0xffffff;
 // 2 or 3
 var shapeRandomFace = Math.floor(Math.random() * 2) + 2;
 // Create and position 10x10 cubes with random colors for each face
@@ -38705,7 +38707,7 @@ var _loop_1 = function _loop_1(i) {
         })); // White
         continue;
       }
-      if (k === 1) {
+      if (k === shapeRandomFace) {
         var shapeMaterial = void 0;
         if (shapeArray[i + 10][j + 10] === 1) {
           shapeMaterial = new THREE.MeshBasicMaterial({
@@ -38714,12 +38716,13 @@ var _loop_1 = function _loop_1(i) {
         } // if there is a 1 next to the 0, make it black
         else if (((_a = shapeArray[i + 10]) === null || _a === void 0 ? void 0 : _a[j + 11]) === 1 || ((_b = shapeArray[i + 10]) === null || _b === void 0 ? void 0 : _b[j + 9]) === 1 || ((_c = shapeArray[i + 11]) === null || _c === void 0 ? void 0 : _c[j + 10]) === 1 || ((_d = shapeArray[i + 9]) === null || _d === void 0 ? void 0 : _d[j + 10]) === 1) {
           shapeMaterial = new THREE.MeshBasicMaterial({
-            color: 0x000000
+            color: shapeContourRandomColor
           });
         } else {
+          // random color
           shapeMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffffff
-          }); // White
+            color: outerShapeRandomColor
+          });
         }
         var currentCube = cubes.find(function (cube) {
           return cube.data.i === i && cube.data.j === j;
@@ -38871,7 +38874,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "50706" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "61778" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];

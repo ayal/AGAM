@@ -108,6 +108,8 @@ for (let i = 0; i < heartShape.length; i++) {
 // turn 2d array "upside down":
 shapeArray.reverse();
 const shapeRandomColor = Math.random() * 0xffffff;
+const outerShapeRandomColor = Math.random() * 0xffffff;
+const shapeContourRandomColor = Math.random() * 0xffffff;
 // 2 or 3
 const shapeRandomFace = Math.floor(Math.random() * 2) + 2;
 // Create and position 10x10 cubes with random colors for each face
@@ -176,10 +178,11 @@ for (let i = -10; i < 10; i++) {
           shapeMaterial = new THREE.MeshBasicMaterial({ color: shapeRandomColor });
         } // if there is a 1 next to the 0, make it black
         else if (shapeArray[i + 10]?.[j + 11] === 1 || shapeArray[i + 10]?.[j + 9] === 1 || shapeArray[i + 11]?.[j + 10] === 1 || shapeArray[i + 9]?.[j + 10] === 1) {
-          shapeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+          shapeMaterial = new THREE.MeshBasicMaterial({ color: shapeContourRandomColor });
         }
         else {
-          shapeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff }); // White
+          // random color
+          shapeMaterial = new THREE.MeshBasicMaterial({ color: outerShapeRandomColor});
         }
         const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
         currentCube.material[k] = shapeMaterial
