@@ -170,7 +170,7 @@ for (let i = -10; i < 10; i++) {
         continue;
       }
 
-      if (k === 1) {
+      if (k === shapeRandomFace) {
         let shapeMaterial;
         if (shapeArray[i + 10][j + 10] === 1) {
           shapeMaterial = new THREE.MeshBasicMaterial({ color: shapeRandomColor });
