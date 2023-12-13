@@ -38582,6 +38582,7 @@ var __importStar = this && this.__importStar || function (mod) {
   __setModuleDefault(result, mod);
   return result;
 };
+var _a, _b, _c, _d;
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
@@ -38625,13 +38626,38 @@ function onMouseClick(event) {
   }
 }
 renderer.domElement.addEventListener('click', onMouseClick);
+// random float between x, y:
+var rnd = function rnd(x, y) {
+  return Math.random() * (y - x) + x;
+};
 // Create an array to hold the cubes
 var cubes = [];
 // [backtop, frontbottom, frontop, backbottom, ...]
-var whiteProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
-var blackProbabilities = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
+// random floats between 0.4 and 0.7
+var whiteProbabilities = [rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7)];
+var blackProbabilities = [rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7)];
 // between 0.5 and 0.8
 var shouldColorBeTheSameProb = Math.random() * (0.8 - 0.4) + 0.4;
+// Define the heart shape by setting 1s at the appropriate positions
+// This represents the heart shape
+var shapeArray = Array(20).fill(0).map(function () {
+  return Array(20).fill(0);
+});
+// Define the heart shape by setting 1s at the appropriate positions
+// This represents the heart shape
+var heartShape = ["0001111000011110000", "0111111100111111100", "0111111111111111100", "1111111111111111110", "1111111111111111110", "1111111111111111110", "1111111111111111110", "0111111111111111100", "0011111111111111000", "0001111111111110000", "0000111111111100000", "0000011111111000000", "0000001111110000000", "0000000111100000000", "0000000011000000000"];
+// Fill the heartArray with the heart shape
+// put shape in the middle of the 20x20 array
+for (var i = 0; i < heartShape.length; i++) {
+  for (var j = 0; j < heartShape[i].length; j++) {
+    shapeArray[i + 2][j + 1] = parseInt(heartShape[i][j]);
+  }
+}
+// turn 2d array "upside down":
+shapeArray.reverse();
+var shapeRandomColor = Math.random() * 0xffffff;
+// 2 or 3
+var shapeRandomFace = Math.floor(Math.random() * 2) + 2;
 // Create and position 10x10 cubes with random colors for each face
 for (var i = -10; i < 10; i++) {
   for (var j = -10; j < 10; j++) {
@@ -38646,19 +38672,16 @@ for (var i = -10; i < 10; i++) {
         continue;
       }
       // Adjusted probability: Increase the chances of selecting white or black
-      if (Math.random() < whiteProbabilities[k]) {
-        cubeMaterials.push(new THREE.MeshBasicMaterial({
-          color: 0xffffff
-        })); // White
-      } else if (Math.random() < blackProbabilities[k]) {
-        cubeMaterials.push(new THREE.MeshBasicMaterial({
-          color: 0x000000
-        })); // Black
-      } else {
-        cubeMaterials.push(new THREE.MeshBasicMaterial({
-          color: Math.random() * 0xffffff
-        }));
-      }
+      /*    if (Math.random() < whiteProbabilities[k]) {
+            cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xffffff })); // White
+          } else if (Math.random() < blackProbabilities[k]) {
+            cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0x000000 })); // Black
+          } else {
+      */
+      cubeMaterials.push(new THREE.MeshBasicMaterial({
+        color: Math.random() * 0xffffff
+      }));
+      //}
     }
     var cube = new THREE.Mesh(cubeGeometry, cubeMaterials);
     cube.data = {
@@ -38680,6 +38703,28 @@ var _loop_1 = function _loop_1(i) {
         cubeMaterials.push(new THREE.MeshBasicMaterial({
           color: 0xffffff
         })); // White
+        continue;
+      }
+      if (k === 1) {
+        var shapeMaterial = void 0;
+        if (shapeArray[i + 10][j + 10] === 1) {
+          shapeMaterial = new THREE.MeshBasicMaterial({
+            color: shapeRandomColor
+          });
+        } // if there is a 1 next to the 0, make it black
+        else if (((_a = shapeArray[i + 10]) === null || _a === void 0 ? void 0 : _a[j + 11]) === 1 || ((_b = shapeArray[i + 10]) === null || _b === void 0 ? void 0 : _b[j + 9]) === 1 || ((_c = shapeArray[i + 11]) === null || _c === void 0 ? void 0 : _c[j + 10]) === 1 || ((_d = shapeArray[i + 9]) === null || _d === void 0 ? void 0 : _d[j + 10]) === 1) {
+          shapeMaterial = new THREE.MeshBasicMaterial({
+            color: 0x000000
+          });
+        } else {
+          shapeMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff
+          }); // White
+        }
+        var currentCube = cubes.find(function (cube) {
+          return cube.data.i === i && cube.data.j === j;
+        });
+        currentCube.material[k] = shapeMaterial;
         continue;
       }
       ///
@@ -38755,6 +38800,30 @@ var _loop_1 = function _loop_1(i) {
         currentCube.material[k] = newMaterials;
         continue;
       }
+      if (shouldColorBeTheSameProb > Math.random()) {
+        // consider modulu if it's the first cube in the row
+        var cubeOneTheTopRight = cubes.find(function (cube) {
+          return cube.data.i === i + 1 && cube.data.j === j - 1;
+        });
+        if (!cubeOneTheTopRight) {
+          continue;
+        }
+        var previousCubeMaterials = cubeOneTheTopRight.material;
+        // if white or black continue:
+        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
+          continue;
+        }
+        var previousColor = previousCubeMaterials[k].color.getHex();
+        var newColor = brightenColor(previousColor, Math.random() * 10);
+        var newMaterials = new THREE.MeshBasicMaterial({
+          color: newColor
+        });
+        var currentCube = cubes.find(function (cube) {
+          return cube.data.i === i && cube.data.j === j;
+        });
+        currentCube.material[k] = newMaterials;
+        continue;
+      }
     }
   };
   for (var j = -10; j < 10; j++) {
@@ -38802,7 +38871,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "61169" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "50706" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];
