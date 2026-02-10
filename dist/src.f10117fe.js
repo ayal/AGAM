@@ -38656,7 +38656,8 @@ for (var i = 0; i < heartShape.length; i++) {
 // turn 2d array "upside down":
 shapeArray.reverse();
 var shapeRandomColor = Math.random() * 0xffffff;
-var outerShapeRandomColor = Math.random() * 0xffffff;
+// inverse of the shape color
+var outerShapeRandomColor = 0xffffff - shapeRandomColor;
 var shapeContourRandomColor = Math.random() * 0xffffff;
 // 2 or 3
 var shapeRandomFace = Math.floor(Math.random() * 2) + 2;
@@ -38874,7 +38875,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "61778" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "49849" + '/');
   ws.onmessage = function (event) {
     checkedAssets = {};
     assetsToAccept = [];

@@ -108,7 +108,8 @@ for (let i = 0; i < heartShape.length; i++) {
 // turn 2d array "upside down":
 shapeArray.reverse();
 const shapeRandomColor = Math.random() * 0xffffff;
-const outerShapeRandomColor = Math.random() * 0xffffff;
+// inverse of the shape color
+const outerShapeRandomColor = 0xffffff - shapeRandomColor;
 const shapeContourRandomColor = Math.random() * 0xffffff;
 // 2 or 3
 const shapeRandomFace = Math.floor(Math.random() * 2) + 2;
