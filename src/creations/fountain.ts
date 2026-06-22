@@ -55,8 +55,14 @@ export function createFountain(): Creation {
     `,
   });
 
-  // central column + base pool
-  group.add(new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, totalH + 2, 32), waterMat));
+  // central water column — top flush with the top ring's top (the water level),
+  // bottom down into the pool (so no extra cylinder pokes out the top)
+  const colTop = totalH / 2; // == top ring's cap top
+  const colH = colTop - poolY;
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, colH, 32), waterMat);
+  column.position.y = (colTop + poolY) / 2;
+  group.add(column);
+
   const pool = new THREE.Mesh(new THREE.CircleGeometry(maxR + amp + 6, 96), waterMat);
   pool.rotation.x = -Math.PI / 2;
   pool.position.y = poolY;
@@ -88,7 +94,7 @@ export function createFountain(): Creation {
     };
 
     const drum = new THREE.Mesh(
-      new THREE.CylinderGeometry(Rin - 0.05, Rin - 0.05, h + 0.5, Math.max(32, P)),
+      new THREE.CylinderGeometry(Rin - 0.05, Rin - 0.05, h - 0.1, Math.max(32, P)),
       waterMat,
     );
     drum.position.set(0, y, 0);
