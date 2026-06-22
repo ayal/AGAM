@@ -57,7 +57,12 @@ export function createMusic(): Music {
         fb.connect(delay);
         delay.connect(ctx.destination);
       }
-      ctx.resume();
+      // iOS Safari: must resume AND play a sound inside the user gesture to unlock
+      void ctx.resume();
+      const unlock = ctx.createBufferSource();
+      unlock.buffer = ctx.createBuffer(1, 1, 22050);
+      unlock.connect(ctx.destination);
+      unlock.start(0);
       if (timer === undefined) timer = window.setInterval(tick, 360);
     },
     stop() {
