@@ -61,8 +61,10 @@ export function createFountain(): Creation {
   pool.position.y = poolY;
   group.add(pool);
 
-  // ---- rings ----
+  // ---- rings (each spins on its own, alternating directions) ----
+  const ringGroups: THREE.Group[] = [];
   for (let t = 0; t < TIERS; t++) {
+    const ring = new THREE.Group();
     const R = RADII[t];
     const h = HEIGHTS[t];
     const y = tierY[t];
@@ -93,7 +95,7 @@ export function createFountain(): Creation {
       waterMat,
     );
     drum.position.set(0, y, 0);
-    group.add(drum);
+    ring.add(drum);
 
     for (let k = 0; k < N; k++) {
       const p0 = vert(k);
@@ -113,9 +115,13 @@ export function createFountain(): Creation {
       const panel = new THREE.Mesh(geo, k % 2 === 0 ? matA : matB);
       panel.position.set((p0.x + p1.x) / 2, y, (p0.z + p1.z) / 2);
       panel.rotation.y = Math.atan2(-dz, dx);
-      group.add(panel);
+      ring.add(panel);
     }
+    group.add(ring);
+    ringGroups.push(ring);
   }
+  // per-ring spin speeds: alternating directions, varied magnitude
+  const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.004 + 0.0016 * t));
 
   // ---- arcing water jets from the (big) middle ring ----
   const midR = RADII[2] + amp;
@@ -187,8 +193,13 @@ export function createFountain(): Creation {
     name: "Fountain",
     group,
     camera: [36, 10, 36],
-    update: (time: number) => {
+    update: (time: number, autoRotate: boolean) => {
       waterUniforms.uTime.value = time;
+      // idle: the whole fountain drifts and each ring spins on its own
+      if (autoRotate) {
+        group.rotation.y += 0.0006;
+        for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
+      }
       // arcing water jets
       for (let n = 0; n < COUNT; n++) {
         const tt = (time + phase[n]) % LIFE;

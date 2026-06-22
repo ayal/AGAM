@@ -57,18 +57,6 @@ for (const name of ["agamograph", "fountain"]) {
 }
 document.body.appendChild(bar);
 
-// minimal refresh (top-right): switch to the other piece, re-randomized
-const refreshBtn = document.createElement("button");
-refreshBtn.textContent = "↻";
-refreshBtn.title = "switch & refresh";
-refreshBtn.style.cssText =
-  "position:fixed;top:14px;right:16px;z-index:9999;width:34px;height:34px;" +
-  "font-size:20px;line-height:34px;text-align:center;color:#222;" +
-  "background:none;border:none;cursor:pointer;opacity:0.75;transition:opacity .15s;";
-refreshBtn.onmouseenter = () => (refreshBtn.style.opacity = "1");
-refreshBtn.onmouseleave = () => (refreshBtn.style.opacity = "0.75");
-refreshBtn.onclick = () => go(which === "fountain" ? "agamograph" : "fountain");
-document.body.appendChild(refreshBtn);
 
 // ---------------------------------------------------------------------------
 // Gentle idle auto-rotation; the first time you grab it, it stops and it's yours.
@@ -84,9 +72,7 @@ renderer.domElement.addEventListener("touchstart", stopAuto, { once: true, passi
 const clock = new THREE.Clock();
 const animate = () => {
   requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
-  if (autoRotate) creation.group.rotation.y += 0.0015;
-  creation.update?.(t);
+  creation.update?.(clock.getElapsedTime(), autoRotate);
   renderer.render(scene, camera);
   controls.update();
 };

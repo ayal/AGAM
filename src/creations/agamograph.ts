@@ -92,6 +92,9 @@ export function createAgamograph(): Creation {
     name: "Agamograph",
     group,
     camera: [-30, 30, 0],
+    update: (_t, autoRotate) => {
+      if (autoRotate) group.rotation.y += 0.0015;
+    },
     dispose: () => btn?.remove(),
   };
 }
