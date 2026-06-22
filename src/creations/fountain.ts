@@ -198,21 +198,28 @@ export function createFountain(): Creation {
   );
   group.add(jets);
 
+  // occasional slow surges so jets sometimes shoot MUCH higher than normal
+  const surge = (t: number, phase: number) => {
+    const s = Math.sin(t * 0.22 + phase);
+    return s > 0.55 ? 1 + ((s - 0.55) / 0.45) * 2.6 : 1; // ~1 normally, up to ~3.6 in a surge
+  };
   // pressure builds up then releases (a triangle ramp), so the arc visibly
   // grows and shrinks over time. Each ring is phase-offset.
   const ringPressure = (launch: number, g: number) => {
     const P = 7;
     const c = ((((launch + g * 2.3) % P) + P) % P) / P;
     const v = c < 0.75 ? c / 0.75 : 1 - (c - 0.75) / 0.25; // peak at 75% then release
-    return 0.2 + 0.8 * v;
+    return (0.2 + 0.8 * v) * surge(launch, g * 1.7);
   };
   // center builds up to a tall near-vertical jet, releases to zero, then rests.
   const centerPressure = (t: number) => {
     const P = 13;
     const c = (((t % P) + P) % P) / P;
-    if (c < 0.5) return 0.2 + 0.8 * (c / 0.5); // build to full (vertical)
-    if (c < 0.65) return 1 - (c - 0.5) / 0.15; // release to 0
-    return 0; // rest (no center stream)
+    let base: number;
+    if (c < 0.5) base = 0.2 + 0.8 * (c / 0.5); // build to full (vertical)
+    else if (c < 0.65) base = 1 - (c - 0.5) / 0.15; // release to 0
+    else return 0; // rest (no center stream)
+    return base * surge(t, 4.0);
   };
 
   // ---- fire at the center top (the "Fire" of Fire & Water) ----
