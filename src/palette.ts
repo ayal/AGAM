@@ -24,6 +24,16 @@ export function shuffle<T>(arr: T[]): T[] {
 
 export const hex = (c: number) => "#" + c.toString(16).padStart(6, "0");
 
+// Linear interpolate between two 24-bit colors (t in 0..1).
+export function lerp(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bl;
+}
+
 // ---- achromatic anchors ---------------------------------------------------
 export const BLACK = 0x161616;
 export const WHITE = 0xf7f7f4;

@@ -13,22 +13,22 @@ import {
 } from "./palette";
 
 // ---------------------------------------------------------------------------
-// Each face's composition is drawn to a 2D canvas, then used as a texture.
-// The grid is PIXELATED (flat cell colors) for everything EXCEPT circles, which
-// are drawn as true smooth curves. Every region is filled with a DENSE pattern
-// so there are no big flat single-color areas.
+// A composition is drawn to a 2D canvas of cols x rows cells, then used as a
+// texture. Pixelated flat cells for everything EXCEPT circles (true curves).
+// Every region is a DENSE pattern so there are no big flat single-color areas.
+// The same code renders the wall's square faces and the fountain's wide ring
+// strips — only the (cols, rows) differ.
 // ---------------------------------------------------------------------------
-export const GRID = 20;
-const TEX = 1024; // texture resolution per face
-const cellpx = TEX / GRID;
+export const GRID = 20; // wall faces are GRID x GRID
+const CELL = 51; // px per cell
 
 type Ctx = CanvasRenderingContext2D;
-type CellFn = (lx: number, ly: number) => number; // a per-cell color "fill"
+type CellFn = (lx: number, ly: number) => number;
 
-// Divide width into n regions (grid cells), summing to GRID.
-function regionWidths(n: number): number[] {
-  const w = Array(n).fill(Math.floor(GRID / n));
-  let rem = GRID - w.reduce((a, b) => a + b, 0);
+// Divide `total` cells into n regions, each >= 2.
+function regionWidths(n: number, total: number): number[] {
+  const w = Array(n).fill(Math.floor(total / n));
+  let rem = total - w.reduce((a, b) => a + b, 0);
   for (let i = 0; rem > 0; i = (i + 1) % n) {
     w[i]++;
     rem--;
@@ -36,7 +36,7 @@ function regionWidths(n: number): number[] {
   for (let t = 0; t < n; t++) {
     const a = randInt(n);
     const b = randInt(n);
-    if (a !== b && w[a] > 5) {
+    if (a !== b && w[a] > 3) {
       w[a]--;
       w[b]++;
     }
@@ -44,14 +44,13 @@ function regionWidths(n: number): number[] {
   return w;
 }
 
-// Fill a single grid cell (with a hair of overlap to avoid seams).
 function cell(ctx: Ctx, gx: number, gy: number, color: number) {
   ctx.fillStyle = hex(color);
-  ctx.fillRect(gx * cellpx, gy * cellpx, cellpx + 0.6, cellpx + 0.6);
+  ctx.fillRect(gx * CELL, gy * CELL, CELL + 0.6, CELL + 0.6);
 }
 
-function paintFill(ctx: Ctx, gx0: number, cw: number, fn: CellFn) {
-  for (let ly = 0; ly < GRID; ly++)
+function paintFill(ctx: Ctx, gx0: number, cw: number, rows: number, fn: CellFn) {
+  for (let ly = 0; ly < rows; ly++)
     for (let lx = 0; lx < cw; lx++) cell(ctx, gx0 + lx, ly, fn(lx, ly));
 }
 
@@ -64,57 +63,63 @@ function checkerFill(c1: number, c2: number, s: number): CellFn {
 function stripeFill(cs: number[], sw: number, horiz: boolean): CellFn {
   return (lx, ly) => cs[Math.floor((horiz ? ly : lx) / sw) % cs.length];
 }
-function ringFill(cs: number[], cw: number, nb: number, diamond: boolean): CellFn {
+function ringFill(cs: number[], cw: number, rows: number, nb: number, diamond: boolean): CellFn {
   const cx = (cw - 1) / 2;
-  const cy = (GRID - 1) / 2;
+  const cy = (rows - 1) / 2;
   return (lx, ly) => {
     const ax = Math.abs(lx - cx) / Math.max(1, cw / 2);
-    const ay = Math.abs(ly - cy) / (GRID / 2);
+    const ay = Math.abs(ly - cy) / Math.max(1, rows / 2);
     const dd = diamond ? (ax + ay) / 2 : Math.max(ax, ay);
     return cs[Math.floor(Math.min(0.999, dd) * nb) % cs.length];
   };
 }
 
-// A random dense pattern fill for a region cw wide.
-function patternFill(cw: number, cols: number[]): CellFn {
-  const cc = subset(cols, 2 + randInt(2)); // 2-3 colors
+function patternFill(cw: number, rows: number, cols: number[]): CellFn {
+  const cc = subset(cols, 2 + randInt(2));
   const c2 = cc[1] ?? cols[(cols.indexOf(cc[0]) + 1) % cols.length];
-  switch (pick(["checker", "stripesV", "stripesH", "diamond", "rect"])) {
+  switch (pick(["checker", "stripesV", "stripesH", "diamond", "rect", "halves", "halves"])) {
     case "checker": return checkerFill(cc[0], c2, 1 + randInt(3));
     case "stripesV": return stripeFill(cc, 1 + randInt(2), false);
     case "stripesH": return stripeFill(cc, 1 + randInt(2), true);
-    case "diamond": return ringFill(cc, cw, 4 + randInt(4), true);
-    default: return ringFill(cc, cw, 4 + randInt(4), false);
+    case "diamond": return ringFill(cc, cw, rows, 4 + randInt(4), true);
+    case "rect": return ringFill(cc, cw, rows, 4 + randInt(4), false);
+    default: {
+      // two-tone split — top/bottom or left/right halves
+      if (Math.random() < 0.6) {
+        const sp = 1 + randInt(Math.max(1, rows - 1));
+        return (_lx, ly) => (ly < sp ? cc[0] : c2);
+      }
+      const sp = 1 + randInt(Math.max(1, cw - 1));
+      return (lx) => (lx < sp ? cc[0] : c2);
+    }
   }
 }
 
 // ---- shapes ---------------------------------------------------------------
-// A rhombus (diamond) made of two fills — full, or hollow with a colored edge.
-function rhombusFill(inside: CellFn, outside: CellFn, edge: number, cw: number, hollow: boolean): CellFn {
+function rhombusFill(inside: CellFn, outside: CellFn, edge: number, cw: number, rows: number, hollow: boolean): CellFn {
   const cx = (cw - 1) / 2;
-  const cy = (GRID - 1) / 2;
+  const cy = (rows - 1) / 2;
   return (lx, ly) => {
-    const dd = Math.abs(lx - cx) / Math.max(1, cw / 2) + Math.abs(ly - cy) / (GRID / 2);
+    const dd = Math.abs(lx - cx) / Math.max(1, cw / 2) + Math.abs(ly - cy) / Math.max(1, rows / 2);
     if (dd > 1) return outside(lx, ly);
-    if (hollow && dd >= 0.74) return edge; // outline ring
+    if (hollow && dd >= 0.74) return edge;
     return inside(lx, ly);
   };
 }
 
-// An axis-aligned rectangle / square of a random size on a patterned ground:
-// full (filled), hollow (frame only), or with a colored center.
-function rectShapeFill(cw: number, cols: number[]): CellFn {
+function rectShapeFill(cw: number, rows: number, cols: number[]): CellFn {
   const cx = (cw - 1) / 2;
-  const cy = (GRID - 1) / 2;
+  const cy = (rows - 1) / 2;
   const maxHx = Math.max(1, Math.floor((cw - 1) / 2));
+  const maxHy = Math.max(1, Math.floor((rows - 1) / 2));
   let hx = 1 + randInt(maxHx);
-  let hy = 2 + randInt(8);
-  if (Math.random() < 0.5) hy = Math.min(hx, 9); // square
+  let hy = 1 + randInt(maxHy);
+  if (Math.random() < 0.5) hy = Math.min(hx, maxHy); // square-ish
   hx = Math.min(hx, maxHx);
-  hy = Math.min(hy, 9);
+  hy = Math.min(hy, maxHy);
 
-  const ground = patternFill(cw, subset(cols, 2 + randInt(2)));
-  const inside = Math.random() < 0.5 ? solidFill(pick(cols)) : patternFill(cw, subset(cols, 2));
+  const ground = patternFill(cw, rows, subset(cols, 2 + randInt(2)));
+  const inside = Math.random() < 0.5 ? solidFill(pick(cols)) : patternFill(cw, rows, subset(cols, 2));
   const border = pick(cols);
   const centerC = pick(cols);
   const mode = pick(["full", "hollow", "center"]);
@@ -129,47 +134,44 @@ function rectShapeFill(cw: number, cols: number[]): CellFn {
       if (onBorder) return border;
       return dx <= hx * 0.4 && dy <= hy * 0.4 ? centerC : inside(lx, ly);
     }
-    return inside(lx, ly); // full
+    return inside(lx, ly);
   };
 }
 
-// Smooth linear gradient across a region (colored faces only). Uses CONSECUTIVE
-// spectrum colors so it stays analogous (a clean spectrum run, never a muddy
-// cross-wheel blend like yellow->purple).
-function paintGradient(ctx: Ctx, gx0: number, cw: number) {
-  const x = gx0 * cellpx;
-  const w = cw * cellpx;
-  const len = 3 + randInt(3); // 3-5 stops
+function paintGradient(ctx: Ctx, gx0: number, cw: number, rows: number) {
+  const x = gx0 * CELL;
+  const w = cw * CELL;
+  const h = rows * CELL;
+  const len = 3 + randInt(3);
   const start = randInt(SPECTRUM.length);
   const cs = Array.from({ length: len }, (_, i) => SPECTRUM[(start + i) % SPECTRUM.length]);
   if (Math.random() < 0.5) cs.reverse();
   const vertical = Math.random() < 0.6;
   const g = vertical
-    ? ctx.createLinearGradient(0, 0, 0, TEX)
+    ? ctx.createLinearGradient(0, 0, 0, h)
     : ctx.createLinearGradient(x, 0, x + w, 0);
   cs.forEach((c, i) => g.addColorStop(i / (cs.length - 1), hex(c)));
   ctx.fillStyle = g;
-  ctx.fillRect(x, 0, w, TEX);
+  ctx.fillRect(x, 0, w, h);
 }
 
-// The ONLY curved painting: ONE big, perfect circle on a PATTERNED ground.
-function drawBigCircle(ctx: Ctx, gx0: number, cw: number, cols: number[]) {
-  paintFill(ctx, gx0, cw, patternFill(cw, subset(cols, 2 + randInt(2)))); // ground
-  const x = gx0 * cellpx;
-  const d = Math.max(4, Math.min(cw, GRID) - randInt(3)); // diameter in cells
-  const r = (d * cellpx) / 2;
-  const cx = x + (cw / 2) * cellpx;
-  const cy = (GRID / 2) * cellpx;
+// The ONLY curved painting: one big, perfect circle on a patterned ground.
+function drawBigCircle(ctx: Ctx, gx0: number, cw: number, rows: number, cols: number[]) {
+  paintFill(ctx, gx0, cw, rows, patternFill(cw, rows, subset(cols, 2 + randInt(2))));
+  const x = gx0 * CELL;
+  const d = Math.max(3, Math.min(cw, rows) - randInt(2));
+  const r = (d * CELL) / 2;
+  const cx = x + (cw / 2) * CELL;
+  const cy = (rows / 2) * CELL;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = hex(pick(cols));
   ctx.fill();
 }
 
-// Fill one region with a randomly chosen pattern or shape.
-function paintRegion(ctx: Ctx, gx0: number, cw: number, cols: number[], allowGradient: boolean) {
+function paintRegion(ctx: Ctx, gx0: number, cw: number, rows: number, cols: number[], allowGradient: boolean) {
   if (allowGradient && Math.random() < 0.18) {
-    paintGradient(ctx, gx0, cw);
+    paintGradient(ctx, gx0, cw, rows);
     return;
   }
   switch (pick(["rhombus", "rect", "pattern", "pattern"])) {
@@ -177,28 +179,27 @@ function paintRegion(ctx: Ctx, gx0: number, cw: number, cols: number[], allowGra
       const hollow = Math.random() < 0.5;
       const inside = Math.random() < 0.5
         ? solidFill(pick(cols))
-        : patternFill(cw, subset(cols, 2 + randInt(2)));
-      const outside = patternFill(cw, subset(cols, 2 + randInt(2)));
-      paintFill(ctx, gx0, cw, rhombusFill(inside, outside, pick(cols), cw, hollow));
+        : patternFill(cw, rows, subset(cols, 2 + randInt(2)));
+      const outside = patternFill(cw, rows, subset(cols, 2 + randInt(2)));
+      paintFill(ctx, gx0, cw, rows, rhombusFill(inside, outside, pick(cols), cw, rows, hollow));
       break;
     }
     case "rect":
-      paintFill(ctx, gx0, cw, rectShapeFill(cw, cols));
+      paintFill(ctx, gx0, cw, rows, rectShapeFill(cw, rows, cols));
       break;
     default:
-      paintFill(ctx, gx0, cw, patternFill(cw, cols));
+      paintFill(ctx, gx0, cw, rows, patternFill(cw, rows, cols));
   }
 }
 
-// ---- whole-face compositions ----------------------------------------------
-function drawComposition(ctx: Ctx, mono: boolean, withCircle: boolean) {
-  const cols = colorSet(mono);
+// ---- whole compositions ---------------------------------------------------
+function drawComposition(ctx: Ctx, cols: number, rows: number, mono: boolean, withCircle: boolean) {
+  const palette = colorSet(mono);
   ctx.fillStyle = hex(bgOf(mono));
-  ctx.fillRect(0, 0, TEX, TEX);
+  ctx.fillRect(0, 0, cols * CELL, rows * CELL);
 
-  const n = 3 + randInt(3); // 3-5 vertical regions
-  const widths = regionWidths(n);
-  // Circle goes on the WIDEST region so it has room to be a proper circle.
+  const n = 3 + randInt(3);
+  const widths = regionWidths(n, cols);
   let circleRegion = -1;
   if (withCircle) {
     circleRegion = 0;
@@ -209,16 +210,16 @@ function drawComposition(ctx: Ctx, mono: boolean, withCircle: boolean) {
     const cw = widths[r];
     ctx.save();
     ctx.beginPath();
-    ctx.rect(gx * cellpx, 0, cw * cellpx, TEX);
+    ctx.rect(gx * CELL, 0, cw * CELL, rows * CELL);
     ctx.clip();
-    if (r === circleRegion) drawBigCircle(ctx, gx, cw, cols);
-    else paintRegion(ctx, gx, cw, cols, !mono); // gradients only on colored faces
+    if (r === circleRegion) drawBigCircle(ctx, gx, cw, rows, palette);
+    else paintRegion(ctx, gx, cw, rows, palette, !mono);
     ctx.restore();
     gx += cw;
   }
 }
 
-// Original pixelated heart — shape & size that worked before. Row 0 = top lobes.
+// Original pixelated heart — for the wall's square faces. Row 0 = top lobes.
 const HEART_BITMAP = [
   "0001111000011110000",
   "0111111100111111100",
@@ -241,7 +242,7 @@ function drawHeartFace(ctx: Ctx, mono: boolean) {
   const bg = mono ? 0xffffff : pick(PALE);
   const heart = mono ? 0x111111 : pick(VIVID.filter((c) => c !== bg));
   const inside: boolean[][] = Array.from({ length: GRID }, () => Array(GRID).fill(false));
-  const ox = 1; // 18-wide heart centered in the 20-wide grid
+  const ox = 1;
   const oy = 2;
   for (let r = 0; r < HEART_BITMAP.length; r++)
     for (let cc = 0; cc < HEART_BITMAP[r].length; cc++)
@@ -250,7 +251,6 @@ function drawHeartFace(ctx: Ctx, mono: boolean) {
         const gx = ox + cc;
         if (gy < GRID && gx < GRID) inside[gy][gx] = true;
       }
-
   for (let gy = 0; gy < GRID; gy++)
     for (let gx = 0; gx < GRID; gx++) {
       let color = bg;
@@ -259,23 +259,37 @@ function drawHeartFace(ctx: Ctx, mono: boolean) {
         inside[gy]?.[gx + 1] || inside[gy]?.[gx - 1] ||
         inside[gy + 1]?.[gx] || inside[gy - 1]?.[gx]
       ) {
-        color = BLACK; // contour outline
+        color = BLACK;
       }
       cell(ctx, gx, gy, color);
     }
 }
 
-// Build a CanvasTexture for one face.
-export function makeFaceTexture(isHeart: boolean, mono: boolean, withCircle: boolean): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = TEX;
-  const ctx = canvas.getContext("2d")!;
-  if (isHeart) drawHeartFace(ctx, mono);
-  else drawComposition(ctx, mono, withCircle);
+function toTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.generateMipmaps = false;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
   return tex;
+}
+
+// Wall: a square GRID x GRID face (optionally the heart).
+export function makeFaceTexture(isHeart: boolean, mono: boolean, withCircle: boolean): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = GRID * CELL;
+  const ctx = canvas.getContext("2d")!;
+  if (isHeart) drawHeartFace(ctx, mono);
+  else drawComposition(ctx, GRID, GRID, mono, withCircle);
+  return toTexture(canvas);
+}
+
+// Fountain: a wide ring strip, cols x rows cells.
+export function makeStripTexture(cols: number, rows: number, mono: boolean, withCircle: boolean): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = cols * CELL;
+  canvas.height = rows * CELL;
+  const ctx = canvas.getContext("2d")!;
+  drawComposition(ctx, cols, rows, mono, withCircle);
+  return toTexture(canvas);
 }
