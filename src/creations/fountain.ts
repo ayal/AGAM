@@ -233,7 +233,7 @@ export function createFountain(): Creation {
   return {
     name: "Fountain",
     group,
-    camera: [36, 10, 36],
+    camera: [72, 20, 72], // start zoomed out (~0.5x)
     toggles: [
       { label: "fire", initial: true, set: (on) => { fireOn = on; fire.visible = on; } },
       { label: "water", initial: true, set: (on) => { waterOn = on; jets.visible = on; } },
