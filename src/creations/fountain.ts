@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { randInt } from "../palette";
-import { makeStripTexture } from "../patterns";
+import { makeStrip } from "../patterns";
 import { createMusic } from "../music";
 import type { Creation } from "../creation";
 
@@ -76,14 +76,10 @@ export function createFountain(): Creation {
     const N = 2 * P;
     const rows = Math.max(5, Math.round(h * 1.4));
 
-    const matA = new THREE.MeshBasicMaterial({
-      map: makeStripTexture(P, rows, mono, Math.random() < 0.6),
-      side: THREE.DoubleSide,
-    });
-    const matB = new THREE.MeshBasicMaterial({
-      map: makeStripTexture(P, rows, mono, Math.random() < 0.6),
-      side: THREE.DoubleSide,
-    });
+    const stripA = makeStrip(P, rows, mono, Math.random() < 0.6);
+    const stripB = makeStrip(P, rows, mono, Math.random() < 0.6);
+    const matA = new THREE.MeshBasicMaterial({ map: stripA.texture, side: THREE.DoubleSide });
+    const matB = new THREE.MeshBasicMaterial({ map: stripB.texture, side: THREE.DoubleSide });
 
     const vert = (k: number) => {
       const ang = (k * Math.PI) / P;
@@ -118,6 +114,39 @@ export function createFountain(): Creation {
       panel.rotation.y = Math.atan2(-dz, dx);
       ring.add(panel);
     }
+
+    // colored caps that follow the ZIGZAG (cog) outline, closing the top &
+    // bottom of the pleated ring. Each cap segment is colored to match its rib
+    // (sampled from that rib's composition column) via vertex colors.
+    const capMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const ri = Math.max(0.3, Rin - 0.1);
+    const buildCap = (yy: number) => {
+      const verts: number[] = [];
+      const cols: number[] = [];
+      for (let k = 0; k < N; k++) {
+        const a0 = (k * Math.PI) / P;
+        const a1 = ((k + 1) * Math.PI) / P;
+        const r0 = k % 2 === 0 ? Rout : Rin;
+        const r1 = (k + 1) % 2 === 0 ? Rout : Rin;
+        const o0x = r0 * Math.cos(a0), o0z = r0 * Math.sin(a0);
+        const o1x = r1 * Math.cos(a1), o1z = r1 * Math.sin(a1);
+        const i0x = ri * Math.cos(a0), i0z = ri * Math.sin(a0);
+        const i1x = ri * Math.cos(a1), i1z = ri * Math.sin(a1);
+        verts.push(o0x, yy, o0z, o1x, yy, o1z, i1x, yy, i1z);
+        verts.push(o0x, yy, o0z, i1x, yy, i1z, i0x, yy, i0z);
+        // this segment's color = the adjacent rib's composition column
+        const c = (k % 2 === 0 ? stripA.colors : stripB.colors)[Math.floor(k / 2)] ?? 0x888888;
+        const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
+        for (let v = 0; v < 6; v++) cols.push(r, g, b);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+      return geo;
+    };
+    ring.add(new THREE.Mesh(buildCap(y + h / 2), capMat));
+    ring.add(new THREE.Mesh(buildCap(y - h / 2), capMat));
+
     group.add(ring);
     ringGroups.push(ring);
   }

@@ -105,6 +105,7 @@ function setCreation(name: string) {
   autoRotate = true;
   current = name === "agamograph" ? createAgamograph() : createFountain();
   scene.add(current.group);
+  camera.up.set(0, 1, 0); // reset any roll so one piece's orbit doesn't carry over
   camera.position.set(...current.camera);
   controls.target.set(0, 0, 0);
   controls.update();

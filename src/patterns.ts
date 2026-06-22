@@ -284,12 +284,23 @@ export function makeFaceTexture(isHeart: boolean, mono: boolean, withCircle: boo
   return toTexture(canvas);
 }
 
-// Fountain: a wide ring strip, cols x rows cells.
-export function makeStripTexture(cols: number, rows: number, mono: boolean, withCircle: boolean): THREE.CanvasTexture {
+// Fountain: a wide ring strip, cols x rows cells. Returns the texture plus a
+// representative color per column (sampled mid-height) so the ring's caps can
+// match each rib's colors.
+export function makeStrip(
+  cols: number, rows: number, mono: boolean, withCircle: boolean,
+): { texture: THREE.CanvasTexture; colors: number[] } {
   const canvas = document.createElement("canvas");
   canvas.width = cols * CELL;
   canvas.height = rows * CELL;
   const ctx = canvas.getContext("2d")!;
   drawComposition(ctx, cols, rows, mono, withCircle);
-  return toTexture(canvas);
+  const row = ctx.getImageData(0, Math.floor(canvas.height / 2), canvas.width, 1).data;
+  const colors: number[] = [];
+  for (let c = 0; c < cols; c++) {
+    const px = Math.min(canvas.width - 1, Math.floor((c + 0.5) * CELL));
+    const i = px * 4;
+    colors.push((row[i] << 16) | (row[i + 1] << 8) | row[i + 2]);
+  }
+  return { texture: toTexture(canvas), colors };
 }
