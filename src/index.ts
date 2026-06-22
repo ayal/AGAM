@@ -1,306 +1,153 @@
+/// <reference types="vite/client" />
 import * as THREE from "three";
 import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
+import { CREAM, pick } from "./palette";
+import { GRID, makeFaceTexture } from "./patterns";
 
-// Set up the scene
+// ---------------------------------------------------------------------------
+// Scene / renderer
+// ---------------------------------------------------------------------------
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight);
 
-// const shiftY = -30;
-
-const renderer = new THREE.WebGLRenderer();
-renderer.setClearColor(new THREE.Color(0xc8c8c8));
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setClearColor(new THREE.Color(0xf4f1e8)); // gallery-wall cream
+renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
 
-function brightenColor(hexColor, factor) {
-  // Extract the red, green, and blue components
-  const red = (hexColor >> 16) & 0xff;
-  const green = (hexColor >> 8) & 0xff;
-  const blue = hexColor & 0xff;
+// ---------------------------------------------------------------------------
+// Per-face textures. BoxGeometry material order: [+x, -x, +y, -y, +z, -z].
+// +z/-z stay cream (the gaps between slats).
+//  - the heart lives on a +x/-x side face (reveals head-on, upright)
+//  - the circle on the OTHER side face
+//  - exactly ONE side per render is pure black & white
+// ---------------------------------------------------------------------------
+const heartFace = pick([0, 1]);
+const circleFace = heartFace === 0 ? 1 : 0;
+const monoFace = pick([0, 1, 2, 3]);
+const faceMats: THREE.MeshBasicMaterial[] = [];
+for (let k = 0; k < 4; k++) {
+  faceMats[k] = new THREE.MeshBasicMaterial({
+    map: makeFaceTexture(k === heartFace, k === monoFace, k === circleFace),
+  });
+}
+const creamMat = new THREE.MeshBasicMaterial({ color: CREAM });
 
-  // Calculate the new RGB values with the brightness factor
-  const newRed = Math.min(255, red + factor);
-  const newGreen = Math.min(255, green + factor);
-  const newBlue = Math.min(255, blue + factor);
-
-  // Combine the new RGB values to get the new color number
-  const newColor = (newRed << 16) | (newGreen << 8) | newBlue;
-
-  return newColor;
+// ---------------------------------------------------------------------------
+// Debug (local dev only): download all four side compositions as one flat image.
+// ---------------------------------------------------------------------------
+if (import.meta.env.DEV) {
+  const btn = document.createElement("button");
+  btn.textContent = "⬇ download sides";
+  btn.style.cssText =
+    "position:fixed;top:12px;left:12px;z-index:9999;padding:8px 12px;" +
+    "font:14px sans-serif;border:1px solid #333;background:#fff;" +
+    "cursor:pointer;border-radius:6px";
+  document.body.appendChild(btn);
+  btn.onclick = () => {
+    const S = 300;
+    const pad = 16;
+    const labelH = 26;
+    const out = document.createElement("canvas");
+    out.width = 4 * S + 5 * pad;
+    out.height = S + labelH + 2 * pad;
+    const o = out.getContext("2d")!;
+    o.fillStyle = "#ffffff";
+    o.fillRect(0, 0, out.width, out.height);
+    o.fillStyle = "#000";
+    o.font = "13px sans-serif";
+    const names = ["face0 +x", "face1 -x", "face2 +y", "face3 -y"];
+    for (let k = 0; k < 4; k++) {
+      const img = (faceMats[k].map as THREE.CanvasTexture).image as HTMLCanvasElement;
+      const x = pad + k * (S + pad);
+      const y = labelH + pad;
+      o.drawImage(img, x, y, S, S);
+      o.strokeStyle = "#999";
+      o.strokeRect(x, y, S, S);
+      let tag = names[k];
+      if (k === heartFace) tag += " · HEART";
+      if (k === circleFace) tag += " · CIRCLE";
+      o.fillText(tag, x, labelH - 8);
+    }
+    const a = document.createElement("a");
+    a.download = "agam-sides.png";
+    a.href = out.toDataURL("image/png");
+    a.click();
+  };
 }
 
-
+// ---------------------------------------------------------------------------
+// Raycaster (click handler kept for future interaction)
+// ---------------------------------------------------------------------------
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-
-function onMouseClick(event) {
-  // Calculate the mouse position in normalized device coordinates (NDC)
+function onMouseClick(event: MouseEvent) {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-  // Update the raycaster's position based on the mouse coordinates
   raycaster.setFromCamera(mouse, camera);
-
-  // Find the intersected objects
-  const intersects = raycaster.intersectObjects(scene.children);
-
-  if (intersects.length > 0) {
-    // The first object in the intersects array is the one that was clicked
-    const clickedMesh = intersects[0].object;
-    //console.log('Clicked Mesh:', clickedMesh.position.x, clickedMesh.position.y, clickedMesh.position.z, clickedMesh.data);
-
-  }
+  raycaster.intersectObjects(scene.children);
 }
+renderer.domElement.addEventListener("click", onMouseClick);
 
-renderer.domElement.addEventListener('click', onMouseClick);
-
-// random float between x, y:
-const rnd  = (x:number, y:number) => Math.random() * (y - x) + x;
-
-// Create an array to hold the cubes
-const cubes = [];
-
-// [backtop, frontbottom, frontop, backbottom, ...]
-// random floats between 0.4 and 0.7
-const whiteProbabilities = [rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7)];
-const blackProbabilities = [rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7), rnd(0.4, 0.7)];
-
-// between 0.5 and 0.8
-const shouldColorBeTheSameProb = Math.random() * (0.8 - 0.4) + 0.4;
-
-
-// Define the heart shape by setting 1s at the appropriate positions
-// This represents the heart shape
-const shapeArray = Array(20).fill(0).map(() => Array(20).fill(0));
-
-// Define the heart shape by setting 1s at the appropriate positions
-// This represents the heart shape
-const heartShape = [
-  
-  "0001111000011110000",
-  "0111111100111111100",
-  "0111111111111111100",
-  "1111111111111111110",
-  "1111111111111111110",
-  "1111111111111111110",
-  "1111111111111111110",
-  "0111111111111111100",
-  "0011111111111111000",
-  "0001111111111110000",
-  "0000111111111100000",
-  "0000011111111000000",
-  "0000001111110000000",
-  "0000000111100000000",
-  "0000000011000000000",
-];
-
-// Fill the heartArray with the heart shape
-// put shape in the middle of the 20x20 array
-for (let i = 0; i < heartShape.length; i++) {
-  for (let j = 0; j < heartShape[i].length; j++) {
-    shapeArray[i + 2][j + 1] = parseInt(heartShape[i][j]);
-  }
-}
-// turn 2d array "upside down":
-shapeArray.reverse();
-const shapeRandomColor = Math.random() * 0xffffff;
-// inverse of the shape color
-const outerShapeRandomColor = 0xffffff - shapeRandomColor;
-const shapeContourRandomColor = Math.random() * 0xffffff;
-// 2 or 3
-const shapeRandomFace = Math.floor(Math.random() * 2) + 2;
-// Create and position 10x10 cubes with random colors for each face
+// ---------------------------------------------------------------------------
+// Build the offset cube field. Each cube samples its own cell of each face
+// texture via custom UVs. Each BoxGeometry face orients its (u,v) along
+// different world axes, so the per-cube sub-rectangle is assigned per face for
+// the texture to tile continuously (otherwise curves shear into spikes).
+// ---------------------------------------------------------------------------
 for (let i = -10; i < 10; i++) {
   for (let j = -10; j < 10; j++) {
-    const cubeGeometry = new THREE.BoxGeometry();
-    const cubeMaterials = [];
-
-
-    // Generate random colors for each face of the cube
-    for (let k = 0; k < 6; k++) {
-
-
-      if (k === 4 || k === 5) {
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xffffff })); // White
-        continue;
-      }
-
-
-
-      // Adjusted probability: Increase the chances of selecting white or black
-  /*    if (Math.random() < whiteProbabilities[k]) {
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xffffff })); // White
-      } else if (Math.random() < blackProbabilities[k]) {
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0x000000 })); // Black
-      } else {
-*/
-        cubeMaterials.push(
-          new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff }),
-        );
-      //}
-
-    }
-
-
-
-    const cube = new THREE.Mesh(cubeGeometry, cubeMaterials);
-    cube.data = { i, j };
-
-
-    cube.position.set(i, i + 1, j + 0.5); // Position cubes evenly in a grid and offset along the Z-axis
+    const geo = new THREE.BoxGeometry();
+    const uv = geo.attributes.uv as THREE.BufferAttribute;
+    const gi = i + 10;
+    const gj = j + 10;
+    const a = gj / GRID;
+    const b = (gj + 1) / GRID;
+    const c = gi / GRID;
+    const d = (gi + 1) / GRID;
+    // +x face (k=0): u runs along -z, v along +y
+    uv.setXY(0, b, d); uv.setXY(1, a, d); uv.setXY(2, b, c); uv.setXY(3, a, c);
+    // -x face (k=1): u runs along +z, v along +y
+    uv.setXY(4, a, d); uv.setXY(5, b, d); uv.setXY(6, a, c); uv.setXY(7, b, c);
+    // +y face (k=2): u along +x (gi), v along +z (gj)
+    uv.setXY(8, c, a); uv.setXY(9, d, a); uv.setXY(10, c, b); uv.setXY(11, d, b);
+    // -y face (k=3): u along +x (gi), v along -z (gj)
+    uv.setXY(12, c, b); uv.setXY(13, d, b); uv.setXY(14, c, a); uv.setXY(15, d, a);
+    uv.needsUpdate = true;
+    const cube = new THREE.Mesh(geo, [
+      faceMats[0],
+      faceMats[1],
+      faceMats[2],
+      faceMats[3],
+      creamMat,
+      creamMat,
+    ]);
+    (cube as any).data = { i, j };
+    cube.position.set(i, i + 1, j + 0.5); // offset grid — this hides/reveals the images
     scene.add(cube);
-    cubes.push(cube);
-
-
   }
 }
 
-// change colors based on the previous cube
-for (let i = -10; i < 10; i++) {
-  for (let j = -10; j < 10; j++) {
-    const cubeGeometry = new THREE.BoxGeometry();
-    const cubeMaterials = [];
-
-    // Generate random colors for each face of the cube
-    for (let k = 0; k < 6; k++) {
-
-      if (k === 4 || k === 5) {
-        cubeMaterials.push(new THREE.MeshBasicMaterial({ color: 0xffffff })); // White
-        continue;
-      }
-
-      if (k === shapeRandomFace) {
-        let shapeMaterial;
-        if (shapeArray[i + 10][j + 10] === 1) {
-          shapeMaterial = new THREE.MeshBasicMaterial({ color: shapeRandomColor });
-        } // if there is a 1 next to the 0, make it black
-        else if (shapeArray[i + 10]?.[j + 11] === 1 || shapeArray[i + 10]?.[j + 9] === 1 || shapeArray[i + 11]?.[j + 10] === 1 || shapeArray[i + 9]?.[j + 10] === 1) {
-          shapeMaterial = new THREE.MeshBasicMaterial({ color: shapeContourRandomColor });
-        }
-        else {
-          // random color
-          shapeMaterial = new THREE.MeshBasicMaterial({ color: outerShapeRandomColor});
-        }
-        const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
-        currentCube.material[k] = shapeMaterial
-        continue;
-      }
-
-
-      ///
-      if (shouldColorBeTheSameProb > Math.random()) {
-        // consider modulu if it's the first cube in the row
-        const cubeOnTheLeft = cubes.find(cube => cube.data.i === i - 1 && cube.data.j === j);
-
-        if (!cubeOnTheLeft) {
-          continue;
-        }
-
-        const previousCubeMaterials = cubeOnTheLeft.material;
-        // if white or black continue:
-        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
-          continue;
-        }
-
-        const previousColor = previousCubeMaterials[k].color.getHex();
-        const newColor = brightenColor(previousColor, Math.random() * 10);
-        const newMaterials = new THREE.MeshBasicMaterial({ color: newColor });
-        const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
-        currentCube.material[k] = newMaterials
-        continue;
-      }
-
-      if (shouldColorBeTheSameProb > Math.random()) {
-        // consider modulu if it's the first cube in the row
-        const cubeOneTheTop = cubes.find(cube => cube.data.i === i && cube.data.j === j - 1);
-
-        if (!cubeOneTheTop) {
-          continue;
-        }
-
-        const previousCubeMaterials = cubeOneTheTop.material;
-        // if white or black continue:
-        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
-          continue;
-        }
-        const previousColor = previousCubeMaterials[k].color.getHex();
-        const newColor = brightenColor(previousColor, Math.random() * 10);
-        const newMaterials = new THREE.MeshBasicMaterial({ color: newColor });
-        const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
-        currentCube.material[k] = newMaterials
-        continue;
-      }
-
-      if (shouldColorBeTheSameProb > Math.random()) {
-        // consider modulu if it's the first cube in the row
-        const cubeOneTheTopLeft = cubes.find(cube => cube.data.i === i - 1 && cube.data.j === j - 1);
-
-        if (!cubeOneTheTopLeft) {
-          continue;
-        }
-
-        const previousCubeMaterials = cubeOneTheTopLeft.material;
-        // if white or black continue:
-        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
-          continue;
-        }
-        const previousColor = previousCubeMaterials[k].color.getHex();
-        const newColor = brightenColor(previousColor, Math.random() * 10);
-        const newMaterials = new THREE.MeshBasicMaterial({ color: newColor });
-        const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
-        currentCube.material[k] = newMaterials
-        continue;
-      }
-
-      if (shouldColorBeTheSameProb > Math.random()) {
-        // consider modulu if it's the first cube in the row
-        const cubeOneTheTopRight = cubes.find(cube => cube.data.i === i + 1 && cube.data.j === j - 1);
-
-        if (!cubeOneTheTopRight) {
-          continue;
-        }
-
-        const previousCubeMaterials = cubeOneTheTopRight.material;
-        // if white or black continue:
-        if (previousCubeMaterials[k].color.getHex() === 0xffffff || previousCubeMaterials[k].color.getHex() === 0x000000) {
-          continue;
-        }
-        const previousColor = previousCubeMaterials[k].color.getHex();
-        const newColor = brightenColor(previousColor, Math.random() * 10);
-        const newMaterials = new THREE.MeshBasicMaterial({ color: newColor });
-        const currentCube = cubes.find(cube => cube.data.i === i && cube.data.j === j);
-        currentCube.material[k] = newMaterials
-        continue;
-      }
-
-    }
-
-
-
-
-
-  }
-}
-
-camera.position.y = 30;
+// ---------------------------------------------------------------------------
+// Camera + controls + render loop
+// ---------------------------------------------------------------------------
+camera.position.y = 30; // original vertical orientation
 camera.position.x = -30;
 
-
-// Create OrbitControls for camera manipulation
 const controls = new TrackballControls(camera, renderer.domElement);
-controls.enableDamping = true; // Add damping effect for smoother movement
+controls.dynamicDampingFactor = 0.1;
 
-// Add rotation animation
 const animate = () => {
   requestAnimationFrame(animate);
-
   renderer.render(scene, camera);
   controls.update();
 };
 
 animate();
-
