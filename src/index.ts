@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
+import type { Creation } from "./creation";
 import { createAgamograph } from "./creations/agamograph";
 import { createFountain } from "./creations/fountain";
 
@@ -25,46 +26,96 @@ const controls = new TrackballControls(camera, renderer.domElement);
 controls.dynamicDampingFactor = 0.1;
 
 // ---------------------------------------------------------------------------
-// Which creation to show is remembered in localStorage. The two name buttons
-// pick one explicitly; refresh switches to the other. Every load re-randomizes.
+// UI helpers
 // ---------------------------------------------------------------------------
-const KEY = "agam:show";
-const which = localStorage.getItem(KEY) === "agamograph" ? "agamograph" : "fountain";
-const creation = which === "agamograph" ? createAgamograph() : createFountain();
-scene.add(creation.group);
-camera.position.set(...creation.camera);
-controls.target.set(0, 0, 0);
-controls.update();
-
-const go = (target: string) => {
-  localStorage.setItem(KEY, target);
-  location.reload();
-};
-
-// selector buttons (top-left): agamograph | fountain — active one is bold/dark
+const BTN = "border:none;background:none;cursor:pointer;padding:0;font:13px sans-serif;letter-spacing:.02em;";
 const bar = document.createElement("div");
-bar.style.cssText =
-  "position:fixed;top:14px;left:16px;z-index:9999;font:13px sans-serif;display:flex;gap:16px;";
-for (const name of ["agamograph", "fountain"]) {
-  const b = document.createElement("button");
-  b.textContent = name;
-  const active = name === which;
-  b.style.cssText =
-    "border:none;background:none;cursor:pointer;padding:0;letter-spacing:.02em;" +
-    `color:${active ? "#111" : "#b3aea2"};font-weight:${active ? "600" : "400"};`;
-  b.onclick = () => go(name);
-  bar.appendChild(b);
-}
+bar.style.cssText = "position:fixed;top:14px;left:16px;z-index:9999;display:flex;gap:16px;align-items:center;";
 document.body.appendChild(bar);
 
+function styleBtn(b: HTMLButtonElement, on: boolean) {
+  b.style.cssText = BTN + `color:${on ? "#111" : "#b3aea2"};font-weight:${on ? "600" : "400"};`;
+}
+function makeToggle(label: string, initial: boolean, onChange: (on: boolean) => void) {
+  const b = document.createElement("button");
+  let on = initial;
+  b.textContent = label;
+  styleBtn(b, on);
+  b.onclick = () => { on = !on; styleBtn(b, on); onChange(on); };
+  (b as any).setOn = (v: boolean) => { on = v; styleBtn(b, on); };
+  return b;
+}
 
 // ---------------------------------------------------------------------------
-// Gentle idle auto-rotation; the first time you grab it, it stops and it's yours.
+// Creation management — in-place switching (a fresh page load always starts on
+// the fountain; the buttons swap without reloading).
 // ---------------------------------------------------------------------------
+let current: Creation | null = null;
 let autoRotate = true;
-const stopAuto = () => (autoRotate = false);
-renderer.domElement.addEventListener("pointerdown", stopAuto, { once: true });
-renderer.domElement.addEventListener("touchstart", stopAuto, { once: true, passive: true });
+let spinBtn: (HTMLButtonElement & { setOn?: (v: boolean) => void }) | null = null;
+
+function disposeGroup(group: THREE.Group) {
+  group.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.geometry) mesh.geometry.dispose();
+    const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+    for (const m of mats) {
+      (m as THREE.MeshBasicMaterial).map?.dispose?.();
+      m.dispose();
+    }
+  });
+}
+
+function setSpin(on: boolean) {
+  autoRotate = on;
+  spinBtn?.setOn?.(on);
+}
+
+function buildUI(name: string) {
+  bar.replaceChildren();
+  for (const sel of ["agamograph", "fountain"]) {
+    const b = document.createElement("button");
+    b.textContent = sel;
+    styleBtn(b, sel === name);
+    b.onclick = () => setCreation(sel);
+    bar.appendChild(b);
+  }
+  if (current?.toggles) {
+    const sep = document.createElement("span");
+    sep.textContent = "·";
+    sep.style.cssText = "color:#cfcabd;";
+    bar.appendChild(sep);
+    spinBtn = makeToggle("spin", autoRotate, setSpin);
+    bar.appendChild(spinBtn);
+    for (const tg of current.toggles) {
+      tg.set(tg.initial);
+      bar.appendChild(makeToggle(tg.label, tg.initial, tg.set));
+    }
+  } else {
+    spinBtn = null;
+  }
+}
+
+function setCreation(name: string) {
+  if (current) {
+    scene.remove(current.group);
+    current.dispose?.();
+    disposeGroup(current.group);
+  }
+  autoRotate = true;
+  current = name === "agamograph" ? createAgamograph() : createFountain();
+  scene.add(current.group);
+  camera.position.set(...current.camera);
+  controls.target.set(0, 0, 0);
+  controls.update();
+  buildUI(name);
+}
+
+// grabbing the piece stops the idle auto-spin
+renderer.domElement.addEventListener("pointerdown", () => setSpin(false));
+
+// fresh load always starts on the fountain
+setCreation("fountain");
 
 // ---------------------------------------------------------------------------
 // Render loop
@@ -72,7 +123,7 @@ renderer.domElement.addEventListener("touchstart", stopAuto, { once: true, passi
 const clock = new THREE.Clock();
 const animate = () => {
   requestAnimationFrame(animate);
-  creation.update?.(clock.getElapsedTime(), autoRotate);
+  current?.update?.(clock.getElapsedTime(), autoRotate);
   renderer.render(scene, camera);
   controls.update();
 };

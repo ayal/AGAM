@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { randInt } from "../palette";
 import { makeStripTexture } from "../patterns";
+import { createMusic } from "../music";
 import type { Creation } from "../creation";
 
 // Agam's Fire & Water Fountain (Dizengoff Square): five stacked rings, profile
@@ -121,7 +122,7 @@ export function createFountain(): Creation {
     ringGroups.push(ring);
   }
   // per-ring spin speeds: alternating directions, varied magnitude (gentle)
-  const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.0014 + 0.0006 * t));
+  const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.0007 + 0.00025 * t));
 
   // ---- arcing water jets from the (big) middle ring ----
   const midR = RADII[2] + amp;
@@ -189,25 +190,39 @@ export function createFountain(): Creation {
   );
   group.add(fire);
 
+  // ---- feature state + music ----
+  let fireOn = true;
+  let waterOn = true;
+  const music = createMusic();
+
   return {
     name: "Fountain",
     group,
     camera: [36, 10, 36],
+    toggles: [
+      { label: "fire", initial: true, set: (on) => { fireOn = on; fire.visible = on; } },
+      { label: "water", initial: true, set: (on) => { waterOn = on; jets.visible = on; } },
+      { label: "music", initial: false, set: (on) => (on ? music.start() : music.stop()) },
+    ],
+    dispose: () => music.stop(),
     update: (time: number, autoRotate: boolean) => {
-      waterUniforms.uTime.value = time;
       // idle: the whole fountain drifts and each ring spins on its own
       if (autoRotate) {
-        group.rotation.y += 0.0002;
+        group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
-      // arcing water jets
-      for (let n = 0; n < COUNT; n++) {
-        const tt = (time + phase[n]) % LIFE;
-        positions[n * 3] = ox[n] + vx[n] * tt;
-        positions[n * 3 + 1] = oy[n] + vy[n] * tt - 0.5 * G * tt * tt;
-        positions[n * 3 + 2] = oz[n] + vz[n] * tt;
+      if (waterOn) {
+        waterUniforms.uTime.value = time;
+        // arcing water jets
+        for (let n = 0; n < COUNT; n++) {
+          const tt = (time + phase[n]) % LIFE;
+          positions[n * 3] = ox[n] + vx[n] * tt;
+          positions[n * 3 + 1] = oy[n] + vy[n] * tt - 0.5 * G * tt * tt;
+          positions[n * 3 + 2] = oz[n] + vz[n] * tt;
+        }
+        jetGeo.attributes.position.needsUpdate = true;
       }
-      jetGeo.attributes.position.needsUpdate = true;
+      if (!fireOn) return;
       // rising, flickering fire — tapers inward and fades yellow -> red
       for (let n = 0; n < FCOUNT; n++) {
         const tt = (time + fphase[n]) % flife[n];
