@@ -19,7 +19,6 @@ export function createFountain(): Creation {
   const amp = 0.9;
   const pleatW = 1.9;
   const monoTier = randInt(TIERS);
-  const WATER = 0x2a6fb0;
   const maxR = Math.max(...RADII);
 
   // tier center heights (cumulative from the bottom)
@@ -31,14 +30,7 @@ export function createFountain(): Creation {
   }
   const poolY = -totalH / 2 - 0.5;
 
-  // ---- blue water: central column + animated pool ----
-  group.add(
-    new THREE.Mesh(
-      new THREE.CylinderGeometry(3.5, 3.5, totalH + 2, 32),
-      new THREE.MeshBasicMaterial({ color: WATER }),
-    ),
-  );
-
+  // ---- animated water: ONE shared material for the pool AND every cylinder ----
   const waterUniforms = { uTime: { value: 0 } };
   const waterMat = new THREE.ShaderMaterial({
     uniforms: waterUniforms,
@@ -50,17 +42,20 @@ export function createFountain(): Creation {
     fragmentShader: `
       uniform float uTime; varying vec2 vUv;
       void main(){
-        vec2 p = (vUv - 0.5) * 28.0;
-        float r = length(p);
-        float ripple = sin(r * 1.4 - uTime * 2.2) * 0.5 + 0.5;
-        float waves  = sin(p.x * 0.7 + uTime * 1.3) * sin(p.y * 0.7 - uTime * 1.1);
-        float m = clamp(ripple * 0.5 + waves * 0.25 + 0.3, 0.0, 1.0);
+        // layered scrolling waves — reads as rippling water on a disc or a cylinder
+        float a = sin(vUv.x * 16.0 + uTime * 1.6) * 0.5 + 0.5;
+        float b = sin(vUv.y * 20.0 - uTime * 1.2 + vUv.x * 8.0) * 0.5 + 0.5;
+        float c = sin((vUv.x - vUv.y) * 12.0 + uTime * 0.9) * 0.5 + 0.5;
+        float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
         vec3 deep  = vec3(0.10, 0.34, 0.60);
-        vec3 light = vec3(0.34, 0.66, 0.88);
+        vec3 light = vec3(0.36, 0.68, 0.90);
         gl_FragColor = vec4(mix(deep, light, m), 1.0);
       }
     `,
   });
+
+  // central column + base pool
+  group.add(new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, totalH + 2, 32), waterMat));
   const pool = new THREE.Mesh(new THREE.CircleGeometry(maxR + amp + 6, 96), waterMat);
   pool.rotation.x = -Math.PI / 2;
   pool.position.y = poolY;
@@ -95,7 +90,7 @@ export function createFountain(): Creation {
 
     const drum = new THREE.Mesh(
       new THREE.CylinderGeometry(Rin - 0.05, Rin - 0.05, h + 0.5, Math.max(32, P)),
-      new THREE.MeshBasicMaterial({ color: WATER }),
+      waterMat,
     );
     drum.position.set(0, y, 0);
     group.add(drum);
@@ -156,12 +151,44 @@ export function createFountain(): Creation {
   );
   group.add(jets);
 
+  // ---- fire at the top (the "Fire" of Fire & Water) ----
+  const FCOUNT = 240;
+  const fox = new Float32Array(FCOUNT), foz = new Float32Array(FCOUNT);
+  const fvy = new Float32Array(FCOUNT), fdx = new Float32Array(FCOUNT), fdz = new Float32Array(FCOUNT);
+  const flife = new Float32Array(FCOUNT), fphase = new Float32Array(FCOUNT);
+  const firePos = new Float32Array(FCOUNT * 3);
+  const fireCol = new Float32Array(FCOUNT * 3);
+  const fireY0 = totalH / 2 + 0.4;
+  for (let n = 0; n < FCOUNT; n++) {
+    const a = Math.random() * Math.PI * 2;
+    const rr = Math.random() * 2.2;
+    fox[n] = Math.cos(a) * rr;
+    foz[n] = Math.sin(a) * rr;
+    fvy[n] = 5 + Math.random() * 3.5;
+    fdx[n] = (Math.random() - 0.5) * 1.2;
+    fdz[n] = (Math.random() - 0.5) * 1.2;
+    flife[n] = 0.9 + Math.random() * 0.7;
+    fphase[n] = Math.random() * flife[n];
+  }
+  const fireGeo = new THREE.BufferGeometry();
+  fireGeo.setAttribute("position", new THREE.BufferAttribute(firePos, 3));
+  fireGeo.setAttribute("color", new THREE.BufferAttribute(fireCol, 3));
+  const fire = new THREE.Points(
+    fireGeo,
+    new THREE.PointsMaterial({
+      size: 1.7, vertexColors: true, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, sizeAttenuation: true,
+    }),
+  );
+  group.add(fire);
+
   return {
     name: "Fountain",
     group,
     camera: [36, 10, 36],
     update: (time: number) => {
       waterUniforms.uTime.value = time;
+      // arcing water jets
       for (let n = 0; n < COUNT; n++) {
         const tt = (time + phase[n]) % LIFE;
         positions[n * 3] = ox[n] + vx[n] * tt;
@@ -169,6 +196,20 @@ export function createFountain(): Creation {
         positions[n * 3 + 2] = oz[n] + vz[n] * tt;
       }
       jetGeo.attributes.position.needsUpdate = true;
+      // rising, flickering fire — tapers inward and fades yellow -> red
+      for (let n = 0; n < FCOUNT; n++) {
+        const tt = (time + fphase[n]) % flife[n];
+        const f = tt / flife[n];
+        firePos[n * 3] = fox[n] * (1 - 0.4 * f) + fdx[n] * tt;
+        firePos[n * 3 + 1] = fireY0 + fvy[n] * tt;
+        firePos[n * 3 + 2] = foz[n] * (1 - 0.4 * f) + fdz[n] * tt;
+        const fade = 1 - f;
+        fireCol[n * 3] = 1.0 * fade;
+        fireCol[n * 3 + 1] = Math.max(0, 0.85 - f * 0.9) * fade;
+        fireCol[n * 3 + 2] = Math.max(0, 0.35 - f * 1.2) * fade;
+      }
+      fireGeo.attributes.position.needsUpdate = true;
+      fireGeo.attributes.color.needsUpdate = true;
     },
   };
 }
