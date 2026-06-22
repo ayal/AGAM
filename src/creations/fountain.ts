@@ -183,10 +183,10 @@ export function createFountain(): Creation {
   });
   // center jet on the topmost ring (group 3): tall, near-vertical
   const topY4 = tierY[TIERS - 1] + HEIGHTS[TIERS - 1] / 2;
-  for (let k = 0; k < 70; k++) {
+  for (let k = 0; k < 140; k++) {
     const az = Math.random() * Math.PI * 2;
-    const life = 1.8 + Math.random() * 0.5;
-    drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: Math.random() * life, life, up: 12 + Math.random() * 3, out: 1.5 + Math.random() * 1.5, grp: 3 });
+    const life = 2.0 + Math.random() * 0.6;
+    drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: Math.random() * life, life, up: 16 + Math.random() * 4, out: 1.4 + Math.random() * 1.4, grp: 3 });
   }
   const COUNT = drops.length;
   const positions = new Float32Array(COUNT * 3);
@@ -194,20 +194,25 @@ export function createFountain(): Creation {
   jetGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   const jets = new THREE.Points(
     jetGeo,
-    new THREE.PointsMaterial({ color: 0xcdeeff, size: 0.42, transparent: true, opacity: 0.9, depthWrite: false }),
+    new THREE.PointsMaterial({ color: 0x3f9ad6, size: 0.55, transparent: true, opacity: 0.95, depthWrite: false }),
   );
   group.add(jets);
 
-  // ring pressure pulses gently (never fully off); center pressure cycles up to
-  // a near-vertical jet, then drops to zero for a while (fire time).
-  const ringPressure = (launch: number, g: number) =>
-    0.45 + 0.5 * (0.5 + 0.5 * Math.sin(launch * 0.9 + g * 2.1));
+  // pressure builds up then releases (a triangle ramp), so the arc visibly
+  // grows and shrinks over time. Each ring is phase-offset.
+  const ringPressure = (launch: number, g: number) => {
+    const P = 7;
+    const c = ((((launch + g * 2.3) % P) + P) % P) / P;
+    const v = c < 0.75 ? c / 0.75 : 1 - (c - 0.75) / 0.25; // peak at 75% then release
+    return 0.2 + 0.8 * v;
+  };
+  // center builds up to a tall near-vertical jet, releases to zero, then rests.
   const centerPressure = (t: number) => {
-    const P = 15;
+    const P = 13;
     const c = (((t % P) + P) % P) / P;
-    if (c < 0.6) return 0.4 + 0.6 * (0.5 - 0.5 * Math.cos((c / 0.6) * Math.PI * 2));
-    if (c < 0.82) return 0; // fire window
-    return 0.4 * ((c - 0.82) / 0.18);
+    if (c < 0.5) return 0.2 + 0.8 * (c / 0.5); // build to full (vertical)
+    if (c < 0.65) return 1 - (c - 0.5) / 0.15; // release to 0
+    return 0; // rest (no center stream)
   };
 
   // ---- fire at the center top (the "Fire" of Fire & Water) ----
