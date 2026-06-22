@@ -10,6 +10,7 @@ import {
   colorSet,
   bgOf,
   subset,
+  analogous,
 } from "./palette";
 
 // ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ function ringFill(cs: number[], cw: number, rows: number, nb: number, diamond: b
 }
 
 function patternFill(cw: number, rows: number, cols: number[]): CellFn {
-  const cc = subset(cols, 2 + randInt(2));
+  const cc = analogous(cols, 2 + randInt(2));
   const c2 = cc[1] ?? cols[(cols.indexOf(cc[0]) + 1) % cols.length];
   switch (pick(["checker", "stripesV", "stripesH", "diamond", "rect", "halves", "halves"])) {
     case "checker": return checkerFill(cc[0], c2, 1 + randInt(3));
@@ -118,8 +119,8 @@ function rectShapeFill(cw: number, rows: number, cols: number[]): CellFn {
   hx = Math.min(hx, maxHx);
   hy = Math.min(hy, maxHy);
 
-  const ground = patternFill(cw, rows, subset(cols, 2 + randInt(2)));
-  const inside = Math.random() < 0.5 ? solidFill(pick(cols)) : patternFill(cw, rows, subset(cols, 2));
+  const ground = patternFill(cw, rows, analogous(cols, 2 + randInt(2)));
+  const inside = Math.random() < 0.5 ? solidFill(pick(cols)) : patternFill(cw, rows, analogous(cols, 2));
   const border = pick(cols);
   const centerC = pick(cols);
   const mode = pick(["full", "hollow", "center"]);
@@ -157,7 +158,7 @@ function paintGradient(ctx: Ctx, gx0: number, cw: number, rows: number) {
 
 // The ONLY curved painting: one big, perfect circle on a patterned ground.
 function drawBigCircle(ctx: Ctx, gx0: number, cw: number, rows: number, cols: number[]) {
-  paintFill(ctx, gx0, cw, rows, patternFill(cw, rows, subset(cols, 2 + randInt(2))));
+  paintFill(ctx, gx0, cw, rows, patternFill(cw, rows, analogous(cols, 2 + randInt(2))));
   const x = gx0 * CELL;
   const d = Math.max(3, Math.min(cw, rows) - randInt(2));
   const r = (d * CELL) / 2;
@@ -179,8 +180,8 @@ function paintRegion(ctx: Ctx, gx0: number, cw: number, rows: number, cols: numb
       const hollow = Math.random() < 0.5;
       const inside = Math.random() < 0.5
         ? solidFill(pick(cols))
-        : patternFill(cw, rows, subset(cols, 2 + randInt(2)));
-      const outside = patternFill(cw, rows, subset(cols, 2 + randInt(2)));
+        : patternFill(cw, rows, analogous(cols, 2 + randInt(2)));
+      const outside = patternFill(cw, rows, analogous(cols, 2 + randInt(2)));
       paintFill(ctx, gx0, cw, rows, rhombusFill(inside, outside, pick(cols), cw, rows, hollow));
       break;
     }

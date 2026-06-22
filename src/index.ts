@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 import type { Creation } from "./creation";
 import { createAgamograph } from "./creations/agamograph";
 import { createFountain } from "./creations/fountain";
@@ -22,12 +22,11 @@ window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// OrbitControls: 1 finger = orbit, pinch = zoom, 2-finger drag = pan; no roll.
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; // smooth inertia
-controls.dampingFactor = 0.08;
-controls.minDistance = 8;
-controls.maxDistance = 140;
+// TrackballControls: free tumble (no pole "stuck" point); 1 finger rotates,
+// two fingers zoom/pan.
+const controls = new TrackballControls(camera, renderer.domElement);
+controls.dynamicDampingFactor = 0.12;
+controls.rotateSpeed = 2.2;
 
 // ---------------------------------------------------------------------------
 // UI helpers
@@ -115,9 +114,6 @@ function setCreation(name: string) {
   controls.update();
   buildUI(name);
 }
-
-// grabbing the piece stops the idle auto-spin
-renderer.domElement.addEventListener("pointerdown", () => setSpin(false));
 
 // fresh load always starts on the fountain
 setCreation("fountain");

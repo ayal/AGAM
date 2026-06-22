@@ -57,12 +57,13 @@ export function createMusic(): Music {
         fb.connect(delay);
         delay.connect(ctx.destination);
       }
-      // iOS Safari: must resume AND play a sound inside the user gesture to unlock
+      // iOS Safari: must resume AND emit sound inside the user gesture to unlock
       void ctx.resume();
       const unlock = ctx.createBufferSource();
       unlock.buffer = ctx.createBuffer(1, 1, 22050);
       unlock.connect(ctx.destination);
       unlock.start(0);
+      tick(); // a real note now, within the gesture, so iOS actually starts audio
       if (timer === undefined) timer = window.setInterval(tick, 360);
     },
     stop() {

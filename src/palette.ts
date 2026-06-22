@@ -81,6 +81,17 @@ const hueOf = (c: number) => {
 // so they stay analogous instead of muddy cross-wheel blends.
 export const SPECTRUM = [...SCHEME].sort((a, b) => hueOf(a) - hueOf(b));
 
+// k colors that are NEIGHBORS on the hue wheel (a short analogous run). Used
+// instead of random subsets so patterns build from related hues and avoid harsh
+// equal-area complementary clashes (black/white in the set act as neutrals).
+export function analogous(cols: number[], k: number): number[] {
+  const sorted = [...cols].sort((a, b) => hueOf(a) - hueOf(b));
+  const n = sorted.length;
+  const len = Math.min(k, n);
+  const start = randInt(n);
+  return Array.from({ length: len }, (_, i) => sorted[(start + i) % n]);
+}
+
 // ---- per-face color sets --------------------------------------------------
 export const colorSet = (mono: boolean) => (mono ? BW : VIVID);
 export const bgOf = (mono: boolean) => (mono ? WHITE : pick(PALE));
