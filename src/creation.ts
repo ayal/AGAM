@@ -6,6 +6,7 @@ export interface Creation {
   name: string;
   group: THREE.Group;
   camera: [number, number, number]; // suggested camera position
+  update?: (time: number) => void; // per-frame animation (seconds elapsed)
   dispose?: () => void; // tear down any DOM/listeners it added
 }
 

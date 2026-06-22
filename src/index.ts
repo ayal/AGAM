@@ -81,9 +81,12 @@ renderer.domElement.addEventListener("touchstart", stopAuto, { once: true, passi
 // ---------------------------------------------------------------------------
 // Render loop
 // ---------------------------------------------------------------------------
+const clock = new THREE.Clock();
 const animate = () => {
   requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
   if (autoRotate) creation.group.rotation.y += 0.0015;
+  creation.update?.(t);
   renderer.render(scene, camera);
   controls.update();
 };
