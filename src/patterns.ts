@@ -194,7 +194,9 @@ function paintRegion(ctx: Ctx, gx0: number, cw: number, rows: number, cols: numb
 }
 
 // ---- whole compositions ---------------------------------------------------
-function drawComposition(ctx: Ctx, cols: number, rows: number, mono: boolean, withCircle: boolean) {
+function drawComposition(
+  ctx: Ctx, cols: number, rows: number, mono: boolean, withCircle: boolean, gradients: boolean,
+) {
   const palette = colorSet(mono);
   ctx.fillStyle = hex(bgOf(mono));
   ctx.fillRect(0, 0, cols * CELL, rows * CELL);
@@ -214,7 +216,7 @@ function drawComposition(ctx: Ctx, cols: number, rows: number, mono: boolean, wi
     ctx.rect(gx * CELL, 0, cw * CELL, rows * CELL);
     ctx.clip();
     if (r === circleRegion) drawBigCircle(ctx, gx, cw, rows, palette);
-    else paintRegion(ctx, gx, cw, rows, palette, !mono);
+    else paintRegion(ctx, gx, cw, rows, palette, gradients && !mono);
     ctx.restore();
     gx += cw;
   }
@@ -281,7 +283,7 @@ export function makeFaceTexture(isHeart: boolean, mono: boolean, withCircle: boo
   canvas.width = canvas.height = GRID * CELL;
   const ctx = canvas.getContext("2d")!;
   if (isHeart) drawHeartFace(ctx, mono);
-  else drawComposition(ctx, GRID, GRID, mono, withCircle);
+  else drawComposition(ctx, GRID, GRID, mono, withCircle, true);
   return toTexture(canvas);
 }
 
@@ -295,7 +297,7 @@ export function makeStrip(
   canvas.width = cols * CELL;
   canvas.height = rows * CELL;
   const ctx = canvas.getContext("2d")!;
-  drawComposition(ctx, cols, rows, mono, withCircle);
+  drawComposition(ctx, cols, rows, mono, withCircle, false); // no gradients on fountain ribs
   const row = ctx.getImageData(0, Math.floor(canvas.height / 2), canvas.width, 1).data;
   const colors: number[] = [];
   for (let c = 0; c < cols; c++) {
