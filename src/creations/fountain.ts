@@ -159,32 +159,37 @@ export function createFountain(): Creation {
   // per-ring spin speeds: alternating directions, varied magnitude (gentle)
   const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.0007 + 0.00025 * t));
 
-  // ---- arcing water jets from the (big) middle ring ----
-  const midR = RADII[2] + amp;
-  const midTopY = tierY[2] + HEIGHTS[2] / 2;
-  const JETS = 30;
-  const PER = 10; // droplets per jet stream
+  // ---- water jets: arcs from the top 3 rings + a center jet on the topmost,
+  // all with changing "pressure" (parabola size). ----
   const G = 22; // gravity
-  const LIFE = 1.7; // seconds for a droplet to arc back down to the pool
-  const COUNT = JETS * PER;
-  const ox = new Float32Array(COUNT), oy = new Float32Array(COUNT), oz = new Float32Array(COUNT);
-  const vx = new Float32Array(COUNT), vy = new Float32Array(COUNT), vz = new Float32Array(COUNT);
-  const phase = new Float32Array(COUNT);
-  const positions = new Float32Array(COUNT * 3);
-  let i = 0;
-  for (let j = 0; j < JETS; j++) {
-    const th = (j / JETS) * Math.PI * 2;
-    const dirx = Math.cos(th);
-    const dirz = Math.sin(th);
-    for (let k = 0; k < PER; k++) {
-      ox[i] = midR * dirx; oy[i] = midTopY; oz[i] = midR * dirz;
-      const up = 9 + Math.random() * 2;
-      const out = 3.5 + Math.random() * 1.5;
-      vx[i] = dirx * out; vy[i] = up; vz[i] = dirz * out;
-      phase[i] = (k / PER) * LIFE + Math.random() * 0.08;
-      i++;
+  const JET_RINGS = [2, 3, 4]; // upper rings squirt; groups 0,1,2
+  type Drop = {
+    ox: number; oy: number; oz: number; cx: number; cz: number;
+    ph: number; life: number; up: number; out: number; grp: number;
+  };
+  const drops: Drop[] = [];
+  JET_RINGS.forEach((ri, g) => {
+    const R = RADII[ri] + amp;
+    const topY = tierY[ri] + HEIGHTS[ri] / 2;
+    const nEmit = Math.max(12, Math.round((2 * Math.PI * R) / 3));
+    for (let e = 0; e < nEmit; e++) {
+      const th = (e / nEmit) * Math.PI * 2;
+      const cx = Math.cos(th), cz = Math.sin(th);
+      for (let k = 0; k < 6; k++) {
+        const life = 1.5 + Math.random() * 0.3;
+        drops.push({ ox: R * cx, oy: topY, oz: R * cz, cx, cz, ph: (k / 6) * life + Math.random() * 0.1, life, up: 7 + Math.random() * 2, out: 4 + Math.random() * 1.5, grp: g });
+      }
     }
+  });
+  // center jet on the topmost ring (group 3): tall, near-vertical
+  const topY4 = tierY[TIERS - 1] + HEIGHTS[TIERS - 1] / 2;
+  for (let k = 0; k < 70; k++) {
+    const az = Math.random() * Math.PI * 2;
+    const life = 1.8 + Math.random() * 0.5;
+    drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: Math.random() * life, life, up: 12 + Math.random() * 3, out: 1.5 + Math.random() * 1.5, grp: 3 });
   }
+  const COUNT = drops.length;
+  const positions = new Float32Array(COUNT * 3);
   const jetGeo = new THREE.BufferGeometry();
   jetGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   const jets = new THREE.Points(
@@ -193,17 +198,29 @@ export function createFountain(): Creation {
   );
   group.add(jets);
 
-  // ---- fire at the top (the "Fire" of Fire & Water) ----
+  // ring pressure pulses gently (never fully off); center pressure cycles up to
+  // a near-vertical jet, then drops to zero for a while (fire time).
+  const ringPressure = (launch: number, g: number) =>
+    0.45 + 0.5 * (0.5 + 0.5 * Math.sin(launch * 0.9 + g * 2.1));
+  const centerPressure = (t: number) => {
+    const P = 15;
+    const c = (((t % P) + P) % P) / P;
+    if (c < 0.6) return 0.4 + 0.6 * (0.5 - 0.5 * Math.cos((c / 0.6) * Math.PI * 2));
+    if (c < 0.82) return 0; // fire window
+    return 0.4 * ((c - 0.82) / 0.18);
+  };
+
+  // ---- fire at the center top (the "Fire" of Fire & Water) ----
   const FCOUNT = 240;
   const fox = new Float32Array(FCOUNT), foz = new Float32Array(FCOUNT);
   const fvy = new Float32Array(FCOUNT), fdx = new Float32Array(FCOUNT), fdz = new Float32Array(FCOUNT);
   const flife = new Float32Array(FCOUNT), fphase = new Float32Array(FCOUNT);
   const firePos = new Float32Array(FCOUNT * 3);
   const fireCol = new Float32Array(FCOUNT * 3);
-  const fireY0 = totalH / 2 + 0.4;
+  const fireY0 = topY4 + 0.2;
   for (let n = 0; n < FCOUNT; n++) {
     const a = Math.random() * Math.PI * 2;
-    const rr = Math.random() * 2.2;
+    const rr = Math.random() * 2.0;
     fox[n] = Math.cos(a) * rr;
     foz[n] = Math.sin(a) * rr;
     fvy[n] = 5 + Math.random() * 3.5;
@@ -218,12 +235,14 @@ export function createFountain(): Creation {
   const fire = new THREE.Points(
     fireGeo,
     new THREE.PointsMaterial({
-      // normal blending (additive blows out to white over the cream background)
       size: 1.7, vertexColors: true, transparent: true, opacity: 0.92,
       depthWrite: false, sizeAttenuation: true,
     }),
   );
   group.add(fire);
+
+  // flickering fire height/pressure
+  const fireScale = (t: number) => 0.55 + 0.3 * Math.sin(t * 1.7) + 0.15 * Math.sin(t * 5.3);
 
   // ---- feature state + music ----
   let fireOn = true;
@@ -235,46 +254,57 @@ export function createFountain(): Creation {
     group,
     camera: [72, 20, 72], // start zoomed out (~0.5x)
     toggles: [
-      { label: "fire", initial: true, set: (on) => { fireOn = on; fire.visible = on; } },
-      { label: "water", initial: true, set: (on) => { waterOn = on; jets.visible = on; } },
+      { label: "fire", initial: true, set: (on) => { fireOn = on; } },
+      { label: "water", initial: true, set: (on) => { waterOn = on; } },
       { label: "music", initial: false, set: (on) => (on ? music.start() : music.stop()) },
     ],
     dispose: () => music.stop(),
     update: (time: number, autoRotate: boolean) => {
-      // idle: the whole fountain drifts and each ring spins on its own
       if (autoRotate) {
         group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
+
+      // water jets
+      jets.visible = waterOn;
       if (waterOn) {
         waterUniforms.uTime.value = time;
-        // arcing water jets
         for (let n = 0; n < COUNT; n++) {
-          const tt = (time + phase[n]) % LIFE;
-          positions[n * 3] = ox[n] + vx[n] * tt;
-          positions[n * 3 + 1] = oy[n] + vy[n] * tt - 0.5 * G * tt * tt;
-          positions[n * 3 + 2] = oz[n] + vz[n] * tt;
+          const d = drops[n];
+          const tt = (time + d.ph) % d.life;
+          const p = d.grp === 3 ? centerPressure(time) : ringPressure(time - tt, d.grp);
+          if (p < 0.04) { positions[n * 3 + 1] = -9999; continue; } // off → hidden
+          const vy = d.up * p, vo = d.out * p;
+          const rad = vo * tt;
+          const y = d.oy + vy * tt - 0.5 * G * tt * tt;
+          if (y < poolY - 0.3) { positions[n * 3 + 1] = -9999; continue; }
+          positions[n * 3] = d.ox + d.cx * rad;
+          positions[n * 3 + 1] = y;
+          positions[n * 3 + 2] = d.oz + d.cz * rad;
         }
         jetGeo.attributes.position.needsUpdate = true;
       }
-      if (!fireOn) return;
-      // rising, flickering fire — tapers inward and fades yellow -> red
-      for (let n = 0; n < FCOUNT; n++) {
-        const tt = (time + fphase[n]) % flife[n];
-        const f = tt / flife[n];
-        firePos[n * 3] = fox[n] * (1 - 0.4 * f) + fdx[n] * tt;
-        firePos[n * 3 + 1] = fireY0 + fvy[n] * tt;
-        firePos[n * 3 + 2] = foz[n] * (1 - 0.4 * f) + fdz[n] * tt;
-        // fiery ramp: orange at the base -> red as it rises, then fades into
-        // the cream background near the top (normal blending over a light bg).
-        const gg = Math.max(0, 0.5 - 0.46 * f); // orange -> red
-        const fade = f * f; // stays colored, fades out near the top
-        fireCol[n * 3] = 1.0 * (1 - fade) + 0.957 * fade;
-        fireCol[n * 3 + 1] = gg * (1 - fade) + 0.945 * fade;
-        fireCol[n * 3 + 2] = 0.0 * (1 - fade) + 0.91 * fade;
+
+      // fire is always present when toggled on (even with water); height
+      // flickers with its own changing "pressure"
+      fire.visible = fireOn;
+      if (fireOn) {
+        const fs = fireScale(time);
+        for (let n = 0; n < FCOUNT; n++) {
+          const tt = (time + fphase[n]) % flife[n];
+          const f = tt / flife[n];
+          firePos[n * 3] = fox[n] * (1 - 0.4 * f) + fdx[n] * tt;
+          firePos[n * 3 + 1] = fireY0 + fvy[n] * fs * tt;
+          firePos[n * 3 + 2] = foz[n] * (1 - 0.4 * f) + fdz[n] * tt;
+          const gg = Math.max(0, 0.5 - 0.46 * f);
+          const fade = f * f;
+          fireCol[n * 3] = 1.0 * (1 - fade) + 0.957 * fade;
+          fireCol[n * 3 + 1] = gg * (1 - fade) + 0.945 * fade;
+          fireCol[n * 3 + 2] = 0.0 * (1 - fade) + 0.91 * fade;
+        }
+        fireGeo.attributes.position.needsUpdate = true;
+        fireGeo.attributes.color.needsUpdate = true;
       }
-      fireGeo.attributes.position.needsUpdate = true;
-      fireGeo.attributes.color.needsUpdate = true;
     },
   };
 }
