@@ -176,8 +176,9 @@ export function createFountain(): Creation {
   const fire = new THREE.Points(
     fireGeo,
     new THREE.PointsMaterial({
-      size: 1.7, vertexColors: true, transparent: true, depthWrite: false,
-      blending: THREE.AdditiveBlending, sizeAttenuation: true,
+      // normal blending (additive blows out to white over the cream background)
+      size: 1.7, vertexColors: true, transparent: true, opacity: 0.92,
+      depthWrite: false, sizeAttenuation: true,
     }),
   );
   group.add(fire);
@@ -203,10 +204,13 @@ export function createFountain(): Creation {
         firePos[n * 3] = fox[n] * (1 - 0.4 * f) + fdx[n] * tt;
         firePos[n * 3 + 1] = fireY0 + fvy[n] * tt;
         firePos[n * 3 + 2] = foz[n] * (1 - 0.4 * f) + fdz[n] * tt;
-        const fade = 1 - f;
-        fireCol[n * 3] = 1.0 * fade;
-        fireCol[n * 3 + 1] = Math.max(0, 0.85 - f * 0.9) * fade;
-        fireCol[n * 3 + 2] = Math.max(0, 0.35 - f * 1.2) * fade;
+        // fiery ramp: orange at the base -> red as it rises, then fades into
+        // the cream background near the top (normal blending over a light bg).
+        const gg = Math.max(0, 0.5 - 0.46 * f); // orange -> red
+        const fade = f * f; // stays colored, fades out near the top
+        fireCol[n * 3] = 1.0 * (1 - fade) + 0.957 * fade;
+        fireCol[n * 3 + 1] = gg * (1 - fade) + 0.945 * fade;
+        fireCol[n * 3 + 2] = 0.0 * (1 - fade) + 0.91 * fade;
       }
       fireGeo.attributes.position.needsUpdate = true;
       fireGeo.attributes.color.needsUpdate = true;
