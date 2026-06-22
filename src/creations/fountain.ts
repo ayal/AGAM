@@ -286,7 +286,9 @@ export function createFountain(): Creation {
           const tt = (time + d.ph) % d.life;
           const p = d.grp === 3 ? centerPressure(time) : ringPressure(time - tt, d.grp);
           if (p < 0.04) { positions[n * 3 + 1] = -9999; continue; } // off → hidden
-          const vy = d.up * p, vo = d.out * p;
+          const pn = p > 1 ? 1 : p;
+          const vy = d.up * p; // more pressure -> higher
+          const vo = d.out * (1 - 0.7 * pn); // more pressure -> narrower (less outward)
           const rad = vo * tt;
           const y = d.oy + vy * tt - 0.5 * G * tt * tt;
           if (y < poolY - 0.3) { positions[n * 3 + 1] = -9999; continue; }
