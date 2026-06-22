@@ -186,7 +186,7 @@ export function createFountain(): Creation {
   for (let k = 0; k < 140; k++) {
     const az = Math.random() * Math.PI * 2;
     const life = 2.0 + Math.random() * 0.6;
-    drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: Math.random() * life, life, up: 16 + Math.random() * 4, out: 1.4 + Math.random() * 1.4, grp: 3 });
+    drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: Math.random() * life, life, up: 11 + Math.random() * 3, out: 1.4 + Math.random() * 1.4, grp: 3 });
   }
   const COUNT = drops.length;
   const positions = new Float32Array(COUNT * 3);
@@ -219,7 +219,7 @@ export function createFountain(): Creation {
     if (c < 0.5) base = 0.2 + 0.8 * (c / 0.5); // build to full (vertical)
     else if (c < 0.65) base = 1 - (c - 0.5) / 0.15; // release to 0
     else return 0; // rest (no center stream)
-    return base * surge(t, 4.0);
+    return base * Math.min(1.4, surge(t, 4.0)); // capped surge — keep it reasonable
   };
 
   // ---- fire at the center top (the "Fire" of Fire & Water) ----
