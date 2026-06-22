@@ -93,7 +93,7 @@ export function createAgamograph(): Creation {
     group,
     camera: [-30, 30, 0],
     update: (_t, autoRotate) => {
-      if (autoRotate) group.rotation.y += 0.0015;
+      if (autoRotate) group.rotation.y += 0.0006;
     },
     dispose: () => btn?.remove(),
   };

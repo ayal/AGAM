@@ -120,8 +120,8 @@ export function createFountain(): Creation {
     group.add(ring);
     ringGroups.push(ring);
   }
-  // per-ring spin speeds: alternating directions, varied magnitude
-  const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.004 + 0.0016 * t));
+  // per-ring spin speeds: alternating directions, varied magnitude (gentle)
+  const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.0014 + 0.0006 * t));
 
   // ---- arcing water jets from the (big) middle ring ----
   const midR = RADII[2] + amp;
@@ -197,7 +197,7 @@ export function createFountain(): Creation {
       waterUniforms.uTime.value = time;
       // idle: the whole fountain drifts and each ring spins on its own
       if (autoRotate) {
-        group.rotation.y += 0.0006;
+        group.rotation.y += 0.0002;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
       // arcing water jets
