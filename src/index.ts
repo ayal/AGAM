@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Creation } from "./creation";
 import { createAgamograph } from "./creations/agamograph";
 import { createFountain } from "./creations/fountain";
@@ -22,8 +22,12 @@ window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-const controls = new TrackballControls(camera, renderer.domElement);
-controls.dynamicDampingFactor = 0.1;
+// OrbitControls: 1 finger = orbit, pinch = zoom, 2-finger drag = pan; no roll.
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; // smooth inertia
+controls.dampingFactor = 0.08;
+controls.minDistance = 8;
+controls.maxDistance = 140;
 
 // ---------------------------------------------------------------------------
 // UI helpers
