@@ -34,7 +34,7 @@ export function createFountain(modes: FountainModes = rollFountainModes()): Crea
   // every build (it's a colour decision), so re-clicks can move in/out of B&W.
   const monoRender = Math.random() < 0.25;
   // Always the same neutral gray background (keeps both colour and B&W legible).
-  const background = 0xa0a2a4;
+  const background = 0xb4b6b8;
   const maxR = Math.max(...RADII);
 
   // Only the bottom pool is water. crisp = sharp planar mirror; else soft cube.
