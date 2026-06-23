@@ -26,6 +26,11 @@ export function createFountain(): Creation {
   const background = monoRender ? 0x73767b : undefined;
   const maxR = Math.max(...RADII);
 
+  // Only the bottom pool is water. Each render picks ONE pool reflection style:
+  //   planarPool=true  -> a crisp planar mirror of the fountain
+  //   planarPool=false -> a cube-map reflective water surface
+  const planarPool = Math.random() < 0.5;
+
   // tier center heights (cumulative from the bottom)
   const tierY: number[] = [];
   let yc = -totalH / 2;
@@ -35,15 +40,19 @@ export function createFountain(): Creation {
   }
   const poolY = -totalH / 2 - 0.5;
 
-  // The curved water surfaces (the ring drums + the central column) can't use a
-  // flat planar reflector, so they reflect the scene through an environment cube
-  // map captured from the fountain's centre each frame.
-  const cubeRT = new THREE.WebGLCubeRenderTarget(512);
+  // Environment cube map used ONLY by the bottom pool when it's in cube-map mode
+  // (captured from the fountain's centre each frame). The upper levels are not
+  // water, so nothing else reflects.
+  const cubeRT = new THREE.WebGLCubeRenderTarget(1024);
   const cubeCam = new THREE.CubeCamera(0.5, 2000, cubeRT);
   group.add(cubeCam);
-  const waterMeshes: THREE.Object3D[] = []; // hidden during the cube capture
+  const waterMeshes: THREE.Object3D[] = []; // hidden during the cube capture (just the pool)
 
-  // ---- animated water: ONE shared material for every cylinder ----
+  // Plain neutral fill for the upper levels (ring drums + central column) — no
+  // water, no reflection.
+  const neutralMat = new THREE.MeshBasicMaterial({ color: 0xcfcabd, side: THREE.DoubleSide });
+
+  // ---- animated water material (bottom pool, cube-map mode only) ----
   const waterUniforms = {
     uTime: { value: 0 },
     envMap: { value: cubeRT.texture },
@@ -78,9 +87,7 @@ export function createFountain(): Creation {
         vec3 deep  = vec3(0.10, 0.34, 0.60);
         vec3 light = vec3(0.36, 0.68, 0.90);
         vec3 water = mix(deep, light, m);
-        // environment reflection tuned to MATCH the pool's planar reflection:
-        // same ~0.30 strength and same gentle ripple magnitude, so the curved
-        // waters read as the same material as the flat pool.
+        // faint environment reflection on the pool's water surface (cube mode)
         vec3 N = normalize(vWorldNormal + 0.012 * vec3(sin(vUv.y*18.0+uTime*1.3), 0.0, cos(vUv.x*18.0-uTime*1.1)));
         vec3 V = normalize(vWorldPos - cameraPosition);
         vec3 R = reflect(V, N);
@@ -97,10 +104,9 @@ export function createFountain(): Creation {
   // as two concentric water cylinders.)
   const colTop = tierY[TIERS - 1] - HEIGHTS[TIERS - 1] / 2;
   const colH = colTop - poolY;
-  const column = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, colH, 32), waterMat);
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, colH, 32), neutralMat);
   column.position.y = (colTop + poolY) / 2;
   group.add(column);
-  waterMeshes.push(column);
 
   // Each render picks ONE of two pool reflection styles:
   //  - planarPool: a crisp planar mirror that reflects the fountain (the pool
@@ -108,7 +114,6 @@ export function createFountain(): Creation {
   //  - else: the SAME cube-map water material as the cylinders, so every water
   //    surface reflects through one identical mechanism (fully consistent).
   const poolGeo = new THREE.CircleGeometry(maxR + amp + 6, 96);
-  const planarPool = Math.random() < 0.5;
   let pool: THREE.Mesh;
   if (planarPool) {
     const poolReflectShader = {
@@ -189,11 +194,10 @@ export function createFountain(): Creation {
 
     const drum = new THREE.Mesh(
       new THREE.CylinderGeometry(Rin - 0.05, Rin - 0.05, h - 0.1, Math.max(32, P)),
-      waterMat,
+      neutralMat,
     );
     drum.position.set(0, y, 0);
     ring.add(drum);
-    waterMeshes.push(drum);
 
     for (let k = 0; k < N; k++) {
       const p0 = vert(k);
@@ -376,14 +380,14 @@ export function createFountain(): Creation {
         group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
-      // animate all water surfaces (cylinders + cube-map pool share waterMat;
-      // the planar pool has its own uTime uniform)
-      waterUniforms.uTime.value = time;
+      // animate the pool's water surface (planar mode uses its own uTime uniform,
+      // cube mode uses the shared waterUniforms)
       if (planarPool) (pool.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
+      else waterUniforms.uTime.value = time;
 
-      // refresh the environment cube map the curved water reflects (hide the
-      // water itself during the capture to avoid feedback)
-      if (env) {
+      // in cube mode, refresh the environment cube map the pool reflects (hide
+      // the pool during the capture to avoid feedback)
+      if (env && !planarPool) {
         for (const w of waterMeshes) w.visible = false;
         cubeCam.update(env.renderer, env.scene);
         for (const w of waterMeshes) w.visible = true;
@@ -392,7 +396,6 @@ export function createFountain(): Creation {
       // water jets
       jets.visible = waterOn;
       if (waterOn) {
-        waterUniforms.uTime.value = time;
         for (let n = 0; n < COUNT; n++) {
           const d = drops[n];
           const tt = (time + d.ph) % d.life;
