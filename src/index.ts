@@ -76,7 +76,7 @@ function setSpin(on: boolean) {
 
 function buildUI(name: string) {
   bar.replaceChildren();
-  for (const sel of ["agamograph", "fountain"]) {
+  for (const sel of ["surface", "fountain"]) {
     const b = document.createElement("button");
     b.textContent = sel;
     styleBtn(b, sel === name);
@@ -87,6 +87,8 @@ function buildUI(name: string) {
   const refresh = document.createElement("button");
   refresh.textContent = "↻";
   styleBtn(refresh, false);
+  refresh.style.fontSize = "17px"; // glyph reads small; bump it to match the labels
+  refresh.style.lineHeight = "1";
   refresh.title = "new render";
   refresh.onclick = () => setCreation(name);
   bar.appendChild(refresh);
@@ -113,7 +115,7 @@ function setCreation(name: string) {
     disposeGroup(current.group);
   }
   autoRotate = true;
-  current = name === "agamograph" ? createAgamograph() : createFountain();
+  current = name === "surface" ? createAgamograph() : createFountain();
   renderer.setClearColor(new THREE.Color(current.background ?? 0xf4f1e8));
   scene.add(current.group);
   camera.up.set(0, 1, 0); // reset any roll so one piece's orbit doesn't carry over

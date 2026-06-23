@@ -4,3 +4,18 @@
   padding: 0;
   box-sizing: border-box;
 }
+
+/* No text/cursor selection — it's an interactive canvas, selection hurts UX */
+html,
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}

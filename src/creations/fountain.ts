@@ -66,9 +66,23 @@ export function createFountain(): Creation {
   column.position.y = (colTop + poolY) / 2;
   group.add(column);
 
-  const pool = new THREE.Mesh(new THREE.CircleGeometry(maxR + amp + 6, 96), waterMat);
+  // The pool is slightly translucent (sharing the same animated uniforms) so the
+  // fountain's mirrored reflection underneath shows faintly through the water.
+  const poolMat = new THREE.ShaderMaterial({
+    uniforms: waterUniforms,
+    side: THREE.DoubleSide,
+    transparent: true,
+    depthWrite: false,
+    vertexShader: waterMat.vertexShader,
+    fragmentShader: waterMat.fragmentShader.replace(
+      "gl_FragColor = vec4(mix(deep, light, m), 1.0);",
+      "gl_FragColor = vec4(mix(deep, light, m), 0.82);",
+    ),
+  });
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(maxR + amp + 6, 96), poolMat);
   pool.rotation.x = -Math.PI / 2;
   pool.position.y = poolY;
+  pool.renderOrder = 1; // draw after the reflection beneath it
   group.add(pool);
 
   // ---- rings (each spins on its own, alternating directions) ----
@@ -161,6 +175,33 @@ export function createFountain(): Creation {
   }
   // per-ring spin speeds: alternating directions, varied magnitude (gentle)
   const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.0007 + 0.00025 * t));
+
+  // ---- reflection: a faded, mirrored copy of the rings under the pool ----
+  // Mirror about the pool plane (y -> 2*poolY - y) by flipping the group in y.
+  const reflection = new THREE.Group();
+  reflection.scale.y = -1;
+  reflection.position.y = 2 * poolY;
+  const refRings: THREE.Group[] = [];
+  for (const ring of ringGroups) {
+    const rc = ring.clone(true); // shares geometry; we clone only the materials
+    rc.traverse((obj) => {
+      const m = obj as THREE.Mesh;
+      if (!m.material) return;
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      const faded = mats.map((mm) => {
+        const c = mm.clone();
+        c.transparent = true;
+        c.opacity = 0.3;
+        c.depthWrite = false;
+        return c;
+      });
+      m.material = Array.isArray(m.material) ? faded : faded[0];
+      m.renderOrder = -1; // beneath the pool
+    });
+    reflection.add(rc);
+    refRings.push(rc);
+  }
+  group.add(reflection);
 
   // ---- water jets: arcs from the top 3 rings + a center jet on the topmost,
   // all with changing "pressure" (parabola size). ----
@@ -268,7 +309,7 @@ export function createFountain(): Creation {
     name: "Fountain",
     group,
     background,
-    camera: [72, 20, 72], // start zoomed out (~0.5x)
+    camera: [72, 13, 72], // zoomed out (~0.5x), lower elevation = more front-facing
     toggles: [
       { label: "fire", initial: true, set: (on) => { fireOn = on; } },
       { label: "water", initial: true, set: (on) => { waterOn = on; } },
@@ -280,6 +321,8 @@ export function createFountain(): Creation {
         group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
+      // keep the mirrored reflection in sync with each ring's spin
+      for (let t = 0; t < refRings.length; t++) refRings[t].rotation.y = ringGroups[t].rotation.y;
 
       // water jets
       jets.visible = waterOn;
