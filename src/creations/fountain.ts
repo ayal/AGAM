@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { makeStrip } from "../patterns";
 import { createMusic } from "../music";
 import type { Creation } from "../creation";
@@ -66,23 +67,57 @@ export function createFountain(): Creation {
   column.position.y = (colTop + poolY) / 2;
   group.add(column);
 
-  // The pool is slightly translucent (sharing the same animated uniforms) so the
-  // fountain's mirrored reflection underneath shows faintly through the water.
-  const poolMat = new THREE.ShaderMaterial({
-    uniforms: waterUniforms,
-    side: THREE.DoubleSide,
-    transparent: true,
-    depthWrite: false,
-    vertexShader: waterMat.vertexShader,
-    fragmentShader: waterMat.fragmentShader.replace(
-      "gl_FragColor = vec4(mix(deep, light, m), 1.0);",
-      "gl_FragColor = vec4(mix(deep, light, m), 0.82);",
-    ),
+  // The pool is a true planar reflector: it renders the fountain mirrored into a
+  // texture mapped ONTO the disc, so the reflection appears only ON the water
+  // surface (clipped to the disc) — never floating in the air below. Its shader
+  // also draws the same rippling water and mixes the reflection in faintly.
+  const poolReflectShader = {
+    uniforms: {
+      color: { value: null },
+      tDiffuse: { value: null },
+      textureMatrix: { value: null },
+      uTime: { value: 0 },
+    },
+    vertexShader: `
+      uniform mat4 textureMatrix;
+      varying vec4 vUv;     // projective coords into the reflection texture
+      varying vec2 vLocal;  // disc-local uv for the water ripple
+      void main() {
+        vLocal = uv;
+        vUv = textureMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float uTime;
+      varying vec4 vUv;
+      varying vec2 vLocal;
+      void main() {
+        // rippling water (same palette as the cylinders' water)
+        float a = sin(vLocal.x * 42.0 + uTime * 1.6) * 0.5 + 0.5;
+        float b = sin(vLocal.y * 50.0 - uTime * 1.2 + vLocal.x * 22.0) * 0.5 + 0.5;
+        float c = sin((vLocal.x - vLocal.y) * 30.0 + uTime * 0.9) * 0.5 + 0.5;
+        float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
+        vec3 deep  = vec3(0.10, 0.34, 0.60);
+        vec3 light = vec3(0.36, 0.68, 0.90);
+        vec3 water = mix(deep, light, m);
+        // sample the reflection with a tiny ripple distortion
+        vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
+                           cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006;
+        vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
+        gl_FragColor = vec4(mix(water, refl.rgb, 0.30), 1.0); // faint reflection
+      }
+    `,
+  };
+  const pool = new Reflector(new THREE.CircleGeometry(maxR + amp + 6, 96), {
+    textureWidth: 1024,
+    textureHeight: 1024,
+    clipBias: 0.003,
+    shader: poolReflectShader,
   });
-  const pool = new THREE.Mesh(new THREE.CircleGeometry(maxR + amp + 6, 96), poolMat);
   pool.rotation.x = -Math.PI / 2;
   pool.position.y = poolY;
-  pool.renderOrder = 1; // draw after the reflection beneath it
   group.add(pool);
 
   // ---- rings (each spins on its own, alternating directions) ----
@@ -175,33 +210,6 @@ export function createFountain(): Creation {
   }
   // per-ring spin speeds: alternating directions, varied magnitude (gentle)
   const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.0007 + 0.00025 * t));
-
-  // ---- reflection: a faded, mirrored copy of the rings under the pool ----
-  // Mirror about the pool plane (y -> 2*poolY - y) by flipping the group in y.
-  const reflection = new THREE.Group();
-  reflection.scale.y = -1;
-  reflection.position.y = 2 * poolY;
-  const refRings: THREE.Group[] = [];
-  for (const ring of ringGroups) {
-    const rc = ring.clone(true); // shares geometry; we clone only the materials
-    rc.traverse((obj) => {
-      const m = obj as THREE.Mesh;
-      if (!m.material) return;
-      const mats = Array.isArray(m.material) ? m.material : [m.material];
-      const faded = mats.map((mm) => {
-        const c = mm.clone();
-        c.transparent = true;
-        c.opacity = 0.3;
-        c.depthWrite = false;
-        return c;
-      });
-      m.material = Array.isArray(m.material) ? faded : faded[0];
-      m.renderOrder = -1; // beneath the pool
-    });
-    reflection.add(rc);
-    refRings.push(rc);
-  }
-  group.add(reflection);
 
   // ---- water jets: arcs from the top 3 rings + a center jet on the topmost,
   // all with changing "pressure" (parabola size). ----
@@ -315,14 +323,17 @@ export function createFountain(): Creation {
       { label: "water", initial: true, set: (on) => { waterOn = on; } },
       { label: "music", initial: false, set: (on) => (on ? music.start() : music.stop()) },
     ],
-    dispose: () => music.stop(),
+    dispose: () => {
+      music.stop();
+      pool.dispose(); // free the reflection render target
+    },
     update: (time: number, autoRotate: boolean) => {
       if (autoRotate) {
         group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
-      // keep the mirrored reflection in sync with each ring's spin
-      for (let t = 0; t < refRings.length; t++) refRings[t].rotation.y = ringGroups[t].rotation.y;
+      // animate the reflective pool's water surface
+      (pool.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
 
       // water jets
       jets.visible = waterOn;
