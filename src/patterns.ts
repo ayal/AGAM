@@ -318,9 +318,10 @@ function softRegion(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boole
     }
     return;
   }
-  const base = tintC(pick(hues), 0.3 + Math.random() * 0.22); // muted, analogous hue
+  // keep the hue vivid (Agam is bold) — only a touch of tint sometimes
+  const base = Math.random() < 0.6 ? pick(hues) : tintC(pick(hues), 0.12 + Math.random() * 0.12);
   const neutral = pick(SOFT_NEUTRALS);
-  const variant = Math.random() < 0.5 ? tintC(base, 0.42) : shadeC(base, 0.2);
+  const variant = Math.random() < 0.5 ? tintC(base, 0.45) : shadeC(base, 0.22); // light/dark of same hue
   const companion = Math.random() < 0.4 ? neutral : variant; // mostly tonal, sometimes neutral
   switch (pick(["checker", "stripesV", "stripesH", "rings", "halves", "rect"])) {
     case "checker": paintFill(ctx, gx0, cw, rows, checkerFill(base, companion, 1 + randInt(3))); break;
@@ -333,8 +334,10 @@ function softRegion(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boole
 }
 
 function softCircle(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boolean, hues: number[]) {
-  const g1 = mono ? 0xeef1f5 : tintC(pick(hues), 0.52);
-  const g2 = mono ? 0xffffff : tintC(pick(hues), 0.58);
+  // lighter tonal ground so the vivid disc reads cleanly on top
+  const ground = pick(hues);
+  const g1 = mono ? 0xeef1f5 : tintC(ground, 0.55);
+  const g2 = mono ? 0xffffff : tintC(ground, 0.68);
   paintFill(ctx, gx0, cw, rows, checkerFill(g1, g2, 2));
   const x = gx0 * CELL;
   const d = Math.max(3, Math.min(cw, rows) - randInt(2));
@@ -343,7 +346,7 @@ function softCircle(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boole
   const cy = (rows / 2) * CELL;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = hex(mono ? 0x596577 : shadeC(tintC(pick(hues), 0.18), 0.04));
+  ctx.fillStyle = hex(mono ? 0x596577 : pick(hues)); // vivid disc
   ctx.fill();
 }
 
@@ -351,8 +354,8 @@ function drawSoftStrip(ctx: Ctx, cols: number, rows: number, mono: boolean, with
   ctx.fillStyle = hex(mono ? 0xffffff : 0xf2eee2);
   ctx.fillRect(0, 0, cols * CELL, rows * CELL);
   // one analogous hue run per strip so neighboring ribs harmonize (no red-next-
-  // to-yellow clashes), and intersperse a neutral so it can break the color.
-  const hues = [...analogous(SCHEME, 2 + randInt(2)), pick(SOFT_NEUTRALS)];
+  // to-yellow clashes); neutrals enter as companion breaks inside softRegion.
+  const hues = analogous(SCHEME, 2 + randInt(2));
   const n = 3 + randInt(3);
   const widths = regionWidths(n, cols);
   let circleRegion = -1;
