@@ -134,7 +134,7 @@ setCreation("fountain");
 const clock = new THREE.Clock();
 const animate = () => {
   requestAnimationFrame(animate);
-  current?.update?.(clock.getElapsedTime(), autoRotate);
+  current?.update?.(clock.getElapsedTime(), autoRotate, { renderer, scene });
   renderer.render(scene, camera);
   controls.update();
 };

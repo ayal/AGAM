@@ -14,7 +14,13 @@ export interface Creation {
   group: THREE.Group;
   camera: [number, number, number]; // suggested camera position
   background?: number; // optional scene clear color (defaults to gallery cream)
-  update?: (time: number, autoRotate: boolean) => void; // per-frame animation
+  // per-frame animation; `env` gives access to the shared renderer/scene (e.g.
+  // for off-screen reflection captures).
+  update?: (
+    time: number,
+    autoRotate: boolean,
+    env?: { renderer: THREE.WebGLRenderer; scene: THREE.Scene },
+  ) => void;
   toggles?: Toggle[]; // optional feature toggles (e.g. fire / water / music)
   dispose?: () => void; // tear down any DOM/listeners it added
 }
