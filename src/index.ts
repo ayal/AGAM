@@ -28,6 +28,9 @@ const controls = new TrackballControls(camera, renderer.domElement);
 controls.dynamicDampingFactor = 0.12;
 controls.rotateSpeed = 2.2;
 
+// disable double-click / double-tap to zoom
+renderer.domElement.addEventListener("dblclick", (e) => e.preventDefault());
+
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
