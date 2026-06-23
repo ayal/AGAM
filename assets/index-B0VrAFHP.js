@@ -4171,12 +4171,15 @@ void main() {
       varying vec3 vWorldPos;
       varying vec3 vWorldNormal;
       void main(){
-        float a = sin(vUv.x * 16.0 + uTime * 1.6) * 0.5 + 0.5;
-        float b = sin(vUv.y * 20.0 - uTime * 1.2 + vUv.x * 8.0) * 0.5 + 0.5;
-        float c = sin((vUv.x - vUv.y) * 12.0 + uTime * 0.9) * 0.5 + 0.5;
-        float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
-        vec3 deep  = vec3(0.10, 0.34, 0.60);
-        vec3 light = vec3(0.36, 0.68, 0.90);
+        // summed directional ripples (no multiplicative blobs) → smooth flowing
+        // water rather than isolated spots; low amplitude = subtle shimmer
+        float w = sin(vUv.x * 7.0 + uTime * 0.5)
+                + sin(vUv.y * 9.0 - uTime * 0.45)
+                + 0.7 * sin((vUv.x + vUv.y) * 13.0 + uTime * 0.65)
+                + 0.5 * sin((vUv.x - vUv.y) * 17.0 - uTime * 0.6);
+        float m = clamp(0.5 + 0.1 * w, 0.0, 1.0);
+        vec3 deep  = vec3(0.12, 0.36, 0.62);
+        vec3 light = vec3(0.34, 0.66, 0.88);
         vec3 water = mix(deep, light, m);
         vec3 N = normalize(vWorldNormal + 0.012 * vec3(sin(vUv.y*18.0+uTime*1.3), 0.0, cos(vUv.x*18.0-uTime*1.1)));
         vec3 V = normalize(vWorldPos - cameraPosition);
@@ -4200,12 +4203,15 @@ void main() {
         varying vec4 vUv;
         varying vec2 vLocal;
         void main() {
-          float a = sin(vLocal.x * 42.0 + uTime * 1.6) * 0.5 + 0.5;
-          float b = sin(vLocal.y * 50.0 - uTime * 1.2 + vLocal.x * 22.0) * 0.5 + 0.5;
-          float c = sin((vLocal.x - vLocal.y) * 30.0 + uTime * 0.9) * 0.5 + 0.5;
-          float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
-          vec3 deep  = vec3(0.10, 0.34, 0.60);
-          vec3 light = vec3(0.36, 0.68, 0.90);
+          // summed directional ripples (no multiplicative blobs) → smooth
+          // flowing water rather than isolated spots; low amplitude = subtle
+          float w = sin(vLocal.x * 7.0 + uTime * 0.5)
+                  + sin(vLocal.y * 9.0 - uTime * 0.45)
+                  + 0.7 * sin((vLocal.x + vLocal.y) * 13.0 + uTime * 0.65)
+                  + 0.5 * sin((vLocal.x - vLocal.y) * 17.0 - uTime * 0.6);
+          float m = clamp(0.5 + 0.1 * w, 0.0, 1.0);
+          vec3 deep  = vec3(0.12, 0.36, 0.62);
+          vec3 light = vec3(0.34, 0.66, 0.88);
           vec3 water = mix(deep, light, m);
           vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
                              cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006;
