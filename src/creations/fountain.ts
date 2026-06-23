@@ -20,7 +20,10 @@ export const rollFountainModes = (): FountainModes => ({
   crisp: Math.random() < 0.5,
 });
 
-export function createFountain(modes: FountainModes = rollFountainModes()): Creation {
+export function createFountain(
+  modes: FountainModes = rollFountainModes(),
+  forceColor = false, // thumbnail capture forces a colour (non-B&W) render
+): Creation {
   const group = new THREE.Group();
 
   const RADII = [7, 12, 16, 10.5, 6.5];
@@ -32,9 +35,9 @@ export function createFountain(modes: FountainModes = rollFountainModes()): Crea
   const pleatW = 1.9;
   // Sometimes the WHOLE fountain is black & white (never just one ring). Rolled
   // every build (it's a colour decision), so re-clicks can move in/out of B&W.
-  const monoRender = Math.random() < 0.25;
+  const monoRender = forceColor ? false : Math.random() < 0.25;
   // Always the same neutral gray background (keeps both colour and B&W legible).
-  const background = 0xb4b6b8;
+  const background = 0xccced0;
   const maxR = Math.max(...RADII);
 
   // Only the bottom pool is water. crisp = sharp planar mirror; else soft cube.

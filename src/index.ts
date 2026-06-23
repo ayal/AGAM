@@ -36,9 +36,12 @@ renderer.domElement.addEventListener("dblclick", (e) => e.preventDefault());
 // UI helpers
 // ---------------------------------------------------------------------------
 const BTN = "border:none;background:none;cursor:pointer;padding:0;font:13px sans-serif;letter-spacing:.02em;";
+// ?thumb → a clean capture mode for the share thumbnail (no UI, no spin, a
+// colourful crisp render, zoomed in).
+const THUMB = new URLSearchParams(location.search).has("thumb");
 const bar = document.createElement("div");
 bar.style.cssText = "position:fixed;top:14px;left:16px;z-index:9999;display:flex;gap:16px;align-items:center;";
-document.body.appendChild(bar);
+if (!THUMB) document.body.appendChild(bar);
 
 function styleBtn(b: HTMLButtonElement, on: boolean) {
   // colors chosen to read on both the cream (surface) and gray (fountain) bg
@@ -62,7 +65,7 @@ let current: Creation | null = null;
 let currentName = "";
 let autoRotate = true;
 let spinBtn: (HTMLButtonElement & { setOn?: (v: boolean) => void }) | null = null;
-let fountainModes: FountainModes = rollFountainModes(); // kept on recolor, re-rolled on full render
+let fountainModes: FountainModes = THUMB ? { crisp: true } : rollFountainModes(); // kept on recolor, re-rolled on full render
 
 function disposeGroup(group: THREE.Group) {
   group.traverse((obj) => {
@@ -125,16 +128,17 @@ function setCreation(name: string, soft = false) {
     current.dispose?.();
     disposeGroup(current.group);
   }
-  if (!soft) fountainModes = rollFountainModes(); // new modes only on a full render
+  if (!soft && !THUMB) fountainModes = rollFountainModes(); // new modes only on a full render
   newScheme(); // colors always change
-  current = name === "surface" ? createAgamograph() : createFountain(fountainModes);
+  current = name === "surface" ? createAgamograph() : createFountain(fountainModes, THUMB);
   renderer.setClearColor(new THREE.Color(current.background ?? 0xf4f1e8));
   scene.add(current.group);
   if (!soft) {
     // full render: reset the camera/orbit to the creation's default view
-    autoRotate = true;
+    autoRotate = !THUMB;
     camera.up.set(0, 1, 0);
     camera.position.set(...current.camera);
+    if (THUMB) camera.position.multiplyScalar(0.62); // zoom in for the thumbnail
     controls.target.set(0, 0, 0);
     controls.update();
   }
