@@ -50,6 +50,57 @@ export function createFountain(): Creation {
     side: THREE.DoubleSide,
   });
 
+  // Cube map for the pool's NON-crisp reflection mode (captured from the
+  // fountain's centre each frame). Only used when the render isn't crisp.
+  const cubeRT = new THREE.WebGLCubeRenderTarget(512);
+  const cubeCam = new THREE.CubeCamera(0.5, 2000, cubeRT);
+  group.add(cubeCam);
+  const waterMeshes: THREE.Object3D[] = []; // hidden during the cube capture (just the pool)
+
+  // Cube-map water material — the pool's soft/non-crisp reflective surface.
+  const waterUniforms = {
+    uTime: { value: 0 },
+    envMap: { value: cubeRT.texture },
+  };
+  const waterMat = new THREE.ShaderMaterial({
+    uniforms: waterUniforms,
+    side: THREE.DoubleSide,
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      varying vec3 vWorldNormal;
+      void main(){
+        vUv = uv;
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wp.xyz;
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform samplerCube envMap;
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      varying vec3 vWorldNormal;
+      void main(){
+        float a = sin(vUv.x * 16.0 + uTime * 1.6) * 0.5 + 0.5;
+        float b = sin(vUv.y * 20.0 - uTime * 1.2 + vUv.x * 8.0) * 0.5 + 0.5;
+        float c = sin((vUv.x - vUv.y) * 12.0 + uTime * 0.9) * 0.5 + 0.5;
+        float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
+        vec3 deep  = vec3(0.10, 0.34, 0.60);
+        vec3 light = vec3(0.36, 0.68, 0.90);
+        vec3 water = mix(deep, light, m);
+        vec3 N = normalize(vWorldNormal + 0.012 * vec3(sin(vUv.y*18.0+uTime*1.3), 0.0, cos(vUv.x*18.0-uTime*1.1)));
+        vec3 V = normalize(vWorldPos - cameraPosition);
+        vec3 R = reflect(V, N);
+        vec3 env = textureCube(envMap, R).rgb;
+        float fres = 0.30 + 0.06 * pow(1.0 - abs(dot(N, -V)), 3.0);
+        gl_FragColor = vec4(mix(water, env, fres), 1.0);
+      }
+    `,
+  });
+
   // central water column — rises up the centre but STOPS at the base of the top
   // ring, whose own inner drum is the single water surface at the very top. (If
   // the column ran all the way up it sat *inside* the top drum, so the top read
@@ -60,58 +111,62 @@ export function createFountain(): Creation {
   column.position.y = (colTop + poolY) / 2;
   group.add(column);
 
-  // The pool is always a planar mirror of the fountain; crisp vs soft only
-  // changes how much the water ripple distorts/softens the reflection.
+  // The pool's reflection style for this render:
+  //   crispPool  -> a sharp planar mirror of the fountain
+  //   !crispPool -> the cube-map reflective water surface (soft / non-crisp)
   const poolGeo = new THREE.CircleGeometry(maxR + amp + 6, 96);
-  const rippleAmp = (crispPool ? 0.004 : 0.03).toFixed(3); // soft = wavier reflection
-  const reflectMix = (crispPool ? 0.34 : 0.22).toFixed(2); // soft = more water, less mirror
-  const poolReflectShader = {
-    uniforms: {
-      color: { value: null },
-      tDiffuse: { value: null },
-      textureMatrix: { value: null },
-      uTime: { value: 0 },
-    },
-    vertexShader: `
-      uniform mat4 textureMatrix;
-      varying vec4 vUv;     // projective coords into the reflection texture
-      varying vec2 vLocal;  // disc-local uv for the water ripple
-      void main() {
-        vLocal = uv;
-        vUv = textureMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tDiffuse;
-      uniform float uTime;
-      varying vec4 vUv;
-      varying vec2 vLocal;
-      void main() {
-        float a = sin(vLocal.x * 42.0 + uTime * 1.6) * 0.5 + 0.5;
-        float b = sin(vLocal.y * 50.0 - uTime * 1.2 + vLocal.x * 22.0) * 0.5 + 0.5;
-        float c = sin((vLocal.x - vLocal.y) * 30.0 + uTime * 0.9) * 0.5 + 0.5;
-        float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
-        vec3 deep  = vec3(0.10, 0.34, 0.60);
-        vec3 light = vec3(0.36, 0.68, 0.90);
-        vec3 water = mix(deep, light, m);
-        vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
-                           cos(vLocal.x * 28.0 - uTime * 1.1)) * ${rippleAmp};
-        vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
-        gl_FragColor = vec4(mix(water, refl.rgb, ${reflectMix}), 1.0);
-      }
-    `,
-  };
-  const poolRes = crispPool ? 1024 : 512; // soft pool rendered lower-res = blurrier
-  const pool = new Reflector(poolGeo, {
-    textureWidth: poolRes,
-    textureHeight: poolRes,
-    clipBias: 0.003,
-    shader: poolReflectShader,
-  });
+  let pool: THREE.Mesh;
+  if (crispPool) {
+    const poolReflectShader = {
+      uniforms: {
+        color: { value: null },
+        tDiffuse: { value: null },
+        textureMatrix: { value: null },
+        uTime: { value: 0 },
+      },
+      vertexShader: `
+        uniform mat4 textureMatrix;
+        varying vec4 vUv;     // projective coords into the reflection texture
+        varying vec2 vLocal;  // disc-local uv for the water ripple
+        void main() {
+          vLocal = uv;
+          vUv = textureMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        varying vec4 vUv;
+        varying vec2 vLocal;
+        void main() {
+          float a = sin(vLocal.x * 42.0 + uTime * 1.6) * 0.5 + 0.5;
+          float b = sin(vLocal.y * 50.0 - uTime * 1.2 + vLocal.x * 22.0) * 0.5 + 0.5;
+          float c = sin((vLocal.x - vLocal.y) * 30.0 + uTime * 0.9) * 0.5 + 0.5;
+          float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
+          vec3 deep  = vec3(0.10, 0.34, 0.60);
+          vec3 light = vec3(0.36, 0.68, 0.90);
+          vec3 water = mix(deep, light, m);
+          vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
+                             cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006;
+          vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
+          gl_FragColor = vec4(mix(water, refl.rgb, 0.34), 1.0);
+        }
+      `,
+    };
+    pool = new Reflector(poolGeo, {
+      textureWidth: 1024,
+      textureHeight: 1024,
+      clipBias: 0.003,
+      shader: poolReflectShader,
+    });
+  } else {
+    pool = new THREE.Mesh(poolGeo, waterMat); // cube-map (non-crisp) water
+  }
   pool.rotation.x = -Math.PI / 2;
   pool.position.y = poolY;
   group.add(pool);
+  waterMeshes.push(pool);
 
   // ---- rings (each spins on its own, alternating directions) ----
   const ringGroups: THREE.Group[] = [];
@@ -318,15 +373,24 @@ export function createFountain(): Creation {
     ],
     dispose: () => {
       music.stop();
-      (pool as Reflector).dispose(); // free the planar reflection render target
+      if (crispPool) (pool as Reflector).dispose(); // free the planar render target
+      cubeRT.dispose(); // free the cube render target
     },
-    update: (time, autoRotate) => {
+    update: (time, autoRotate, env) => {
       if (autoRotate) {
         group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
       // animate the pool's reflective water surface
       (pool.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
+
+      // non-crisp mode: refresh the cube map the pool reflects (hide the pool
+      // during the capture to avoid feedback)
+      if (env && !crispPool) {
+        for (const w of waterMeshes) w.visible = false;
+        cubeCam.update(env.renderer, env.scene);
+        for (const w of waterMeshes) w.visible = true;
+      }
 
       // water jets
       jets.visible = waterOn;
