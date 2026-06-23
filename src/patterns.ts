@@ -11,6 +11,9 @@ import {
   bgOf,
   subset,
   analogous,
+  SCHEME,
+  WHITE,
+  lerp,
 } from "./palette";
 
 // ---------------------------------------------------------------------------
@@ -287,6 +290,90 @@ export function makeFaceTexture(isHeart: boolean, mono: boolean, withCircle: boo
   return toTexture(canvas);
 }
 
+// ---------------------------------------------------------------------------
+// SOFT fountain compositions: muted hues, no black, neutral (white/cream)
+// breaks, and pairings that are mostly tonal (same hue, different lightness) or
+// color+neutral — so big repeated surfaces stay easy on the eye.
+// ---------------------------------------------------------------------------
+const SOFT_NEUTRALS = [0xffffff, 0xeee8db, 0xf0ead9];
+const tintC = (c: number, a: number) => lerp(c, WHITE, a);
+const shadeC = (c: number, a: number) => lerp(c, 0x16223c, a);
+function tonalRamp(base: number, n: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push(lerp(shadeC(base, 0.3), tintC(base, 0.5), n === 1 ? 0.5 : i / (n - 1)));
+  }
+  return out;
+}
+
+function softRegion(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boolean, hues: number[]) {
+  if (mono) {
+    // soft slate (harmonizes with the water) instead of a heavy near-black
+    const a = 0xeef1f5, b = 0x596577;
+    switch (pick(["checker", "stripesV", "stripesH", "halves"])) {
+      case "checker": paintFill(ctx, gx0, cw, rows, checkerFill(a, b, 1 + randInt(3))); break;
+      case "stripesV": paintFill(ctx, gx0, cw, rows, stripeFill([a, b], 1 + randInt(2), false)); break;
+      case "stripesH": paintFill(ctx, gx0, cw, rows, stripeFill([a, b], 1 + randInt(2), true)); break;
+      default: { const sp = 1 + randInt(Math.max(1, rows - 1)); paintFill(ctx, gx0, cw, rows, (_lx, ly) => (ly < sp ? a : b)); }
+    }
+    return;
+  }
+  const base = tintC(pick(hues), 0.3 + Math.random() * 0.22); // muted, analogous hue
+  const neutral = pick(SOFT_NEUTRALS);
+  const variant = Math.random() < 0.5 ? tintC(base, 0.42) : shadeC(base, 0.2);
+  const companion = Math.random() < 0.4 ? neutral : variant; // mostly tonal, sometimes neutral
+  switch (pick(["checker", "stripesV", "stripesH", "rings", "halves", "rect"])) {
+    case "checker": paintFill(ctx, gx0, cw, rows, checkerFill(base, companion, 1 + randInt(3))); break;
+    case "stripesV": paintFill(ctx, gx0, cw, rows, stripeFill([base, variant, neutral], 1 + randInt(2), false)); break;
+    case "stripesH": paintFill(ctx, gx0, cw, rows, stripeFill([base, variant, neutral], 1 + randInt(2), true)); break;
+    case "rings": { const ramp = tonalRamp(base, 3 + randInt(2)); paintFill(ctx, gx0, cw, rows, ringFill(ramp, cw, rows, ramp.length, Math.random() < 0.5)); break; }
+    case "halves": { const sp = 1 + randInt(Math.max(1, rows - 1)); paintFill(ctx, gx0, cw, rows, (_lx, ly) => (ly < sp ? base : companion)); break; }
+    default: paintFill(ctx, gx0, cw, rows, rectShapeFill(cw, rows, [base, variant, neutral]));
+  }
+}
+
+function softCircle(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boolean, hues: number[]) {
+  const g1 = mono ? 0xeef1f5 : tintC(pick(hues), 0.52);
+  const g2 = mono ? 0xffffff : tintC(pick(hues), 0.58);
+  paintFill(ctx, gx0, cw, rows, checkerFill(g1, g2, 2));
+  const x = gx0 * CELL;
+  const d = Math.max(3, Math.min(cw, rows) - randInt(2));
+  const r = (d * CELL) / 2;
+  const cx = x + (cw / 2) * CELL;
+  const cy = (rows / 2) * CELL;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = hex(mono ? 0x596577 : shadeC(tintC(pick(hues), 0.18), 0.04));
+  ctx.fill();
+}
+
+function drawSoftStrip(ctx: Ctx, cols: number, rows: number, mono: boolean, withCircle: boolean) {
+  ctx.fillStyle = hex(mono ? 0xffffff : 0xf2eee2);
+  ctx.fillRect(0, 0, cols * CELL, rows * CELL);
+  // one analogous hue run per strip so neighboring ribs harmonize (no red-next-
+  // to-yellow clashes), and intersperse a neutral so it can break the color.
+  const hues = [...analogous(SCHEME, 2 + randInt(2)), pick(SOFT_NEUTRALS)];
+  const n = 3 + randInt(3);
+  const widths = regionWidths(n, cols);
+  let circleRegion = -1;
+  if (withCircle) {
+    circleRegion = 0;
+    for (let r = 1; r < n; r++) if (widths[r] > widths[circleRegion]) circleRegion = r;
+  }
+  let gx = 0;
+  for (let r = 0; r < n; r++) {
+    const cw = widths[r];
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gx * CELL, 0, cw * CELL, rows * CELL);
+    ctx.clip();
+    if (r === circleRegion) softCircle(ctx, gx, cw, rows, mono, hues);
+    else softRegion(ctx, gx, cw, rows, mono, hues);
+    ctx.restore();
+    gx += cw;
+  }
+}
+
 // Fountain: a wide ring strip, cols x rows cells. Returns the texture plus a
 // representative color per column (sampled mid-height) so the ring's caps can
 // match each rib's colors.
@@ -297,7 +384,7 @@ export function makeStrip(
   canvas.width = cols * CELL;
   canvas.height = rows * CELL;
   const ctx = canvas.getContext("2d")!;
-  drawComposition(ctx, cols, rows, mono, withCircle, false); // no gradients on fountain ribs
+  drawSoftStrip(ctx, cols, rows, mono, withCircle); // soft, eye-friendly fountain ribs
   const row = ctx.getImageData(0, Math.floor(canvas.height / 2), canvas.width, 1).data;
   const colors: number[] = [];
   for (let c = 0; c < cols; c++) {
