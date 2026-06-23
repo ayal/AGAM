@@ -83,6 +83,13 @@ function buildUI(name: string) {
     b.onclick = () => setCreation(sel);
     bar.appendChild(b);
   }
+  // refresh = re-render the current creation (new random palette/patterns)
+  const refresh = document.createElement("button");
+  refresh.textContent = "↻";
+  styleBtn(refresh, false);
+  refresh.title = "new render";
+  refresh.onclick = () => setCreation(name);
+  bar.appendChild(refresh);
   if (current?.toggles) {
     const sep = document.createElement("span");
     sep.textContent = "·";
@@ -107,6 +114,7 @@ function setCreation(name: string) {
   }
   autoRotate = true;
   current = name === "agamograph" ? createAgamograph() : createFountain();
+  renderer.setClearColor(new THREE.Color(current.background ?? 0xf4f1e8));
   scene.add(current.group);
   camera.up.set(0, 1, 0); // reset any roll so one piece's orbit doesn't carry over
   camera.position.set(...current.camera);

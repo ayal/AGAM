@@ -308,8 +308,9 @@ function tonalRamp(base: number, n: number): number[] {
 
 function softRegion(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boolean, hues: number[]) {
   if (mono) {
-    // soft slate (harmonizes with the water) instead of a heavy near-black
-    const a = 0xeef1f5, b = 0x596577;
+    // true black & white (a whole-render choice; the scene bg switches to gray
+    // so neither disappears)
+    const a = WHITE, b = BLACK;
     switch (pick(["checker", "stripesV", "stripesH", "halves"])) {
       case "checker": paintFill(ctx, gx0, cw, rows, checkerFill(a, b, 1 + randInt(3))); break;
       case "stripesV": paintFill(ctx, gx0, cw, rows, stripeFill([a, b], 1 + randInt(2), false)); break;
@@ -336,8 +337,8 @@ function softRegion(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boole
 function softCircle(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boolean, hues: number[]) {
   // lighter tonal ground so the vivid disc reads cleanly on top
   const ground = pick(hues);
-  const g1 = mono ? 0xeef1f5 : tintC(ground, 0.55);
-  const g2 = mono ? 0xffffff : tintC(ground, 0.68);
+  const g1 = mono ? WHITE : tintC(ground, 0.55);
+  const g2 = mono ? WHITE : tintC(ground, 0.68);
   paintFill(ctx, gx0, cw, rows, checkerFill(g1, g2, 2));
   const x = gx0 * CELL;
   const d = Math.max(3, Math.min(cw, rows) - randInt(2));
@@ -346,7 +347,7 @@ function softCircle(ctx: Ctx, gx0: number, cw: number, rows: number, mono: boole
   const cy = (rows / 2) * CELL;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = hex(mono ? 0x596577 : pick(hues)); // vivid disc
+  ctx.fillStyle = hex(mono ? BLACK : pick(hues)); // black disc on white, or vivid
   ctx.fill();
 }
 

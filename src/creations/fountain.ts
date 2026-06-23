@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { randInt } from "../palette";
 import { makeStrip } from "../patterns";
 import { createMusic } from "../music";
 import type { Creation } from "../creation";
@@ -19,7 +18,11 @@ export function createFountain(): Creation {
   const totalH = HEIGHTS.reduce((a, b) => a + b, 0) + gap * (TIERS - 1);
   const amp = 0.9;
   const pleatW = 1.9;
-  const monoTier = randInt(TIERS);
+  // Sometimes the WHOLE fountain is black & white (never just one ring). On a
+  // B&W render the cream wall would swallow the whites, so we switch to a mid
+  // gray background that keeps both black and white legible.
+  const monoRender = Math.random() < 0.25;
+  const background = monoRender ? 0x73767b : undefined;
   const maxR = Math.max(...RADII);
 
   // tier center heights (cumulative from the bottom)
@@ -75,7 +78,7 @@ export function createFountain(): Creation {
     const R = RADII[t];
     const h = HEIGHTS[t];
     const y = tierY[t];
-    const mono = t === monoTier;
+    const mono = monoRender;
     const Rout = R + amp;
     const Rin = R - amp;
     const P = Math.max(16, Math.round((2 * Math.PI * R) / pleatW));
@@ -264,6 +267,7 @@ export function createFountain(): Creation {
   return {
     name: "Fountain",
     group,
+    background,
     camera: [72, 20, 72], // start zoomed out (~0.5x)
     toggles: [
       { label: "fire", initial: true, set: (on) => { fireOn = on; } },
