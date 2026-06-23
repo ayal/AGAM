@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { makeStrip } from "../patterns";
 import { createMusic } from "../music";
 import type { Creation } from "../creation";
@@ -38,7 +37,7 @@ export function createFountain(): Creation {
   // The curved water surfaces (the ring drums + the central column) can't use a
   // flat planar reflector, so they reflect the scene through an environment cube
   // map captured from the fountain's centre each frame.
-  const cubeRT = new THREE.WebGLCubeRenderTarget(256);
+  const cubeRT = new THREE.WebGLCubeRenderTarget(512);
   const cubeCam = new THREE.CubeCamera(0.5, 2000, cubeRT);
   group.add(cubeCam);
   const waterMeshes: THREE.Object3D[] = []; // hidden during the cube capture
@@ -78,14 +77,14 @@ export function createFountain(): Creation {
         vec3 deep  = vec3(0.10, 0.34, 0.60);
         vec3 light = vec3(0.36, 0.68, 0.90);
         vec3 water = mix(deep, light, m);
-        // faint environment reflection — kept calm and steady so the cylinders'
-        // reflection reads like the pool's (only a small ripple perturbation,
-        // near-constant strength rather than a grazing-angle blowout)
-        vec3 N = normalize(vWorldNormal + 0.02 * vec3(sin(vUv.y*18.0+uTime*1.3), 0.0, cos(vUv.x*18.0-uTime*1.1)));
+        // environment reflection tuned to MATCH the pool's planar reflection:
+        // same ~0.30 strength and same gentle ripple magnitude, so the curved
+        // waters read as the same material as the flat pool.
+        vec3 N = normalize(vWorldNormal + 0.012 * vec3(sin(vUv.y*18.0+uTime*1.3), 0.0, cos(vUv.x*18.0-uTime*1.1)));
         vec3 V = normalize(vWorldPos - cameraPosition);
         vec3 R = reflect(V, N);
         vec3 env = textureCube(envMap, R).rgb;
-        float fres = 0.26 + 0.08 * pow(1.0 - abs(dot(N, -V)), 3.0);
+        float fres = 0.30 + 0.06 * pow(1.0 - abs(dot(N, -V)), 3.0);
         gl_FragColor = vec4(mix(water, env, fres), 1.0);
       }
     `,
@@ -102,55 +101,10 @@ export function createFountain(): Creation {
   group.add(column);
   waterMeshes.push(column);
 
-  // The pool is a true planar reflector: it renders the fountain mirrored into a
-  // texture mapped ONTO the disc, so the reflection appears only ON the water
-  // surface (clipped to the disc) — never floating in the air below. Its shader
-  // also draws the same rippling water and mixes the reflection in faintly.
-  const poolReflectShader = {
-    uniforms: {
-      color: { value: null },
-      tDiffuse: { value: null },
-      textureMatrix: { value: null },
-      uTime: { value: 0 },
-    },
-    vertexShader: `
-      uniform mat4 textureMatrix;
-      varying vec4 vUv;     // projective coords into the reflection texture
-      varying vec2 vLocal;  // disc-local uv for the water ripple
-      void main() {
-        vLocal = uv;
-        vUv = textureMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tDiffuse;
-      uniform float uTime;
-      varying vec4 vUv;
-      varying vec2 vLocal;
-      void main() {
-        // rippling water (same palette as the cylinders' water)
-        float a = sin(vLocal.x * 42.0 + uTime * 1.6) * 0.5 + 0.5;
-        float b = sin(vLocal.y * 50.0 - uTime * 1.2 + vLocal.x * 22.0) * 0.5 + 0.5;
-        float c = sin((vLocal.x - vLocal.y) * 30.0 + uTime * 0.9) * 0.5 + 0.5;
-        float m = clamp(0.25 + 0.45 * a * b + 0.2 * c, 0.0, 1.0);
-        vec3 deep  = vec3(0.10, 0.34, 0.60);
-        vec3 light = vec3(0.36, 0.68, 0.90);
-        vec3 water = mix(deep, light, m);
-        // sample the reflection with a tiny ripple distortion
-        vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
-                           cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006;
-        vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
-        gl_FragColor = vec4(mix(water, refl.rgb, 0.30), 1.0); // faint reflection
-      }
-    `,
-  };
-  const pool = new Reflector(new THREE.CircleGeometry(maxR + amp + 6, 96), {
-    textureWidth: 1024,
-    textureHeight: 1024,
-    clipBias: 0.003,
-    shader: poolReflectShader,
-  });
+  // The pool reflects through the SAME cube-map water material as the cylinders,
+  // so every water surface — flat or curved — uses one identical reflection
+  // mechanism and reads consistently.
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(maxR + amp + 6, 96), waterMat);
   pool.rotation.x = -Math.PI / 2;
   pool.position.y = poolY;
   group.add(pool);
@@ -362,7 +316,6 @@ export function createFountain(): Creation {
     ],
     dispose: () => {
       music.stop();
-      pool.dispose(); // free the planar reflection render target
       cubeRT.dispose(); // free the environment cube render target
     },
     update: (time, autoRotate, env) => {
@@ -370,8 +323,7 @@ export function createFountain(): Creation {
         group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
-      // animate the reflective pool's water surface
-      (pool.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
+      // animate all water surfaces (pool + cylinders share waterMat)
       waterUniforms.uTime.value = time;
 
       // refresh the environment cube map the curved water reflects (hide the
