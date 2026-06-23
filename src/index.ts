@@ -37,7 +37,8 @@ bar.style.cssText = "position:fixed;top:14px;left:16px;z-index:9999;display:flex
 document.body.appendChild(bar);
 
 function styleBtn(b: HTMLButtonElement, on: boolean) {
-  b.style.cssText = BTN + `color:${on ? "#111" : "#b3aea2"};font-weight:${on ? "600" : "400"};`;
+  // colors chosen to read on both the cream (surface) and gray (fountain) bg
+  b.style.cssText = BTN + `color:${on ? "#111" : "#5f6266"};font-weight:${on ? "700" : "400"};`;
 }
 function makeToggle(label: string, initial: boolean, onChange: (on: boolean) => void) {
   const b = document.createElement("button");
@@ -95,7 +96,7 @@ function buildUI(name: string) {
   if (current?.toggles) {
     const sep = document.createElement("span");
     sep.textContent = "·";
-    sep.style.cssText = "color:#cfcabd;";
+    sep.style.cssText = "color:#8b8e91;";
     bar.appendChild(sep);
     spinBtn = makeToggle("spin", autoRotate, setSpin);
     bar.appendChild(spinBtn);

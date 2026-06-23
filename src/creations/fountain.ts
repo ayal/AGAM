@@ -22,7 +22,7 @@ export function createFountain(): Creation {
   // Sometimes the WHOLE fountain is black & white (never just one ring).
   const monoRender = Math.random() < 0.25;
   // Always the same neutral gray background (keeps both colour and B&W legible).
-  const background = 0x73767b;
+  const background = 0xa0a2a4;
   const maxR = Math.max(...RADII);
 
   // Only the bottom pool is water, and it's ALWAYS a planar mirror of the
@@ -54,7 +54,8 @@ export function createFountain(): Creation {
   // fountain's centre each frame). Only used when the render isn't crisp.
   const cubeRT = new THREE.WebGLCubeRenderTarget(512);
   const cubeCam = new THREE.CubeCamera(0.5, 2000, cubeRT);
-  group.add(cubeCam);
+  cubeCam.position.y = poolY + 0.5; // just above the pool, so its upward view
+  group.add(cubeCam);               // captures the fountain → the pool reflects it
   const waterMeshes: THREE.Object3D[] = []; // hidden during the cube capture (just the pool)
 
   // Cube-map water material — the pool's soft/non-crisp reflective surface.
@@ -98,7 +99,7 @@ export function createFountain(): Creation {
         vec3 V = normalize(vWorldPos - cameraPosition);
         vec3 R = reflect(V, N);
         vec3 env = textureCube(envMap, R).rgb;
-        float fres = 0.30 + 0.06 * pow(1.0 - abs(dot(N, -V)), 3.0);
+        float fres = 0.5 + 0.18 * pow(1.0 - abs(dot(N, -V)), 3.0); // stronger, more visible
         gl_FragColor = vec4(mix(water, env, fres), 1.0);
       }
     `,
