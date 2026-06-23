@@ -376,7 +376,7 @@ export function createFountain(): Creation {
     toggles: [
       { label: "fire", initial: true, set: (on) => { fireOn = on; } },
       { label: "water", initial: true, set: (on) => { waterOn = on; } },
-      { label: "music", initial: false, set: (on) => (on ? music.start() : music.stop()) },
+      { label: "sound", initial: false, set: (on) => (on ? music.start() : music.stop()) },
     ],
     dispose: () => {
       music.stop();
