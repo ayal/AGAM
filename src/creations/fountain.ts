@@ -9,7 +9,19 @@ import type { Creation } from "../creation";
 // panels (the agamograph fold wrapped into a cylinder), so a different image
 // resolves from each side. Structure cylinders read as blue water (animated
 // ripple shader for the pool), and arcing water jets squirt from the middle ring.
-export function createFountain(): Creation {
+// The "modes" persist across a recolor (re-click) but are re-rolled on a full
+// render (switch / refresh). mono = whole-fountain black & white; crisp = sharp
+// planar pool mirror vs the soft cube-map pool.
+export interface FountainModes {
+  mono: boolean;
+  crisp: boolean;
+}
+export const rollFountainModes = (): FountainModes => ({
+  mono: Math.random() < 0.25,
+  crisp: Math.random() < 0.5,
+});
+
+export function createFountain(modes: FountainModes = rollFountainModes()): Creation {
   const group = new THREE.Group();
 
   const RADII = [7, 12, 16, 10.5, 6.5];
@@ -20,16 +32,13 @@ export function createFountain(): Creation {
   const amp = 0.9;
   const pleatW = 1.9;
   // Sometimes the WHOLE fountain is black & white (never just one ring).
-  const monoRender = Math.random() < 0.25;
+  const monoRender = modes.mono;
   // Always the same neutral gray background (keeps both colour and B&W legible).
   const background = 0xa0a2a4;
   const maxR = Math.max(...RADII);
 
-  // Only the bottom pool is water, and it's ALWAYS a planar mirror of the
-  // fountain. Each render only varies how sharp it is:
-  //   crispPool=true  -> a sharp mirror
-  //   crispPool=false -> the same reflection but soft & wavy (more ripple, blur)
-  const crispPool = Math.random() < 0.5;
+  // Only the bottom pool is water. crisp = sharp planar mirror; else soft cube.
+  const crispPool = modes.crisp;
 
   // tier center heights (cumulative from the bottom)
   const tierY: number[] = [];

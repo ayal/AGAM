@@ -48,18 +48,9 @@ export const PALETTES: Record<string, number[]> = {
   spectrumBand: [0xe53935, 0xfb8c00, 0xfdd835, 0x43a047, 0x1e88e5, 0x8e24aa],
 };
 
-// One scheme is chosen per render for cohesion.
-export const SCHEME = pick(Object.values(PALETTES));
-
-// Colored working set = the scheme + black for achromatic accents (very Agam).
-export const VIVID = [...SCHEME, BLACK];
-
 // pale (background) tints and pure black & white
 export const PALE = [WHITE, WHITE, CREAM]; // mostly white grounds, like his prints
 export const BW = [WHITE, BLACK]; // black & white only — no grayscale
-
-// full reference list (not used directly by the renderer)
-export const AGAM_PALETTE = [BLACK, WHITE, CREAM, ...SCHEME];
 
 // ---- spectrum ordering (for gradients) ------------------------------------
 const hueOf = (c: number) => {
@@ -77,9 +68,32 @@ const hueOf = (c: number) => {
   return (h * 60 + 360) % 360;
 };
 
-// Scheme colors ordered around the hue wheel. Gradients use CONSECUTIVE entries
-// so they stay analogous instead of muddy cross-wheel blends.
-export const SPECTRUM = [...SCHEME].sort((a, b) => hueOf(a) - hueOf(b));
+// One scheme is chosen per render for cohesion. These are LIVE bindings updated
+// by newScheme() — a recolor swaps them without touching the seeded layout rng,
+// so importers (patterns.ts) automatically see the new colours.
+const PALETTE_LIST = Object.values(PALETTES);
+export let SCHEME: number[] = PALETTE_LIST[0];
+export let VIVID: number[] = [...SCHEME, BLACK]; // scheme + black achromatic accent
+// scheme colors ordered around the hue wheel (gradients use consecutive entries)
+export let SPECTRUM: number[] = [...SCHEME].sort((a, b) => hueOf(a) - hueOf(b));
+
+// Pick a NEW colour scheme. Uses Math.random (NOT the seeded layout rng) so it
+// never shifts the layout. If sameLen is given, only schemes with that many
+// colours are eligible — so a rebuild makes the exact same number of rng draws
+// and reproduces the identical layout, just recoloured. Always returns a scheme
+// different from the current one.
+export function newScheme(sameLen?: number) {
+  let opts = PALETTE_LIST.filter((p) => p !== SCHEME);
+  if (sameLen !== undefined) {
+    const m = opts.filter((p) => p.length === sameLen);
+    if (m.length) opts = m;
+  }
+  if (!opts.length) opts = PALETTE_LIST;
+  SCHEME = opts[Math.floor(Math.random() * opts.length)];
+  VIVID = [...SCHEME, BLACK];
+  SPECTRUM = [...SCHEME].sort((a, b) => hueOf(a) - hueOf(b));
+}
+newScheme(); // initialise at load
 
 // k colors that are NEIGHBORS on the hue wheel (a short analogous run). Used
 // instead of random subsets so patterns build from related hues and avoid harsh

@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 import type { Creation } from "./creation";
 import { createAgamograph } from "./creations/agamograph";
-import { createFountain } from "./creations/fountain";
+import { createFountain, rollFountainModes, type FountainModes } from "./creations/fountain";
+import { newScheme } from "./palette";
 
 // ---------------------------------------------------------------------------
 // Shared scene / renderer / camera / controls
@@ -58,8 +59,10 @@ function makeToggle(label: string, initial: boolean, onChange: (on: boolean) => 
 // the fountain; the buttons swap without reloading).
 // ---------------------------------------------------------------------------
 let current: Creation | null = null;
+let currentName = "";
 let autoRotate = true;
 let spinBtn: (HTMLButtonElement & { setOn?: (v: boolean) => void }) | null = null;
+let fountainModes: FountainModes = rollFountainModes(); // kept on recolor, re-rolled on full render
 
 function disposeGroup(group: THREE.Group) {
   group.traverse((obj) => {
@@ -84,17 +87,19 @@ function buildUI(name: string) {
     const b = document.createElement("button");
     b.textContent = sel;
     styleBtn(b, sel === name);
-    b.onclick = () => setCreation(sel);
+    // clicking the current creation re-rolls patterns+colors but keeps the modes
+    // & camera (soft); clicking the other one switches (full render).
+    b.onclick = () => setCreation(sel, sel === currentName);
     bar.appendChild(b);
   }
-  // refresh = re-render the current creation (new random palette/patterns)
+  // refresh = a full new render (new modes, colors, patterns, reset camera)
   const refresh = document.createElement("button");
   refresh.textContent = "↻";
   styleBtn(refresh, false);
   refresh.style.fontSize = "17px"; // glyph reads small; bump it to match the labels
   refresh.style.lineHeight = "1";
   refresh.title = "new render";
-  refresh.onclick = () => setCreation(name);
+  refresh.onclick = () => setCreation(name, false);
   bar.appendChild(refresh);
   if (current?.toggles) {
     const sep = document.createElement("span");
@@ -112,20 +117,28 @@ function buildUI(name: string) {
   }
 }
 
-function setCreation(name: string) {
+// soft = re-roll patterns + colors but keep the modes and camera (a re-click on
+// the current creation). Otherwise it's a full render: new modes + reset camera.
+function setCreation(name: string, soft = false) {
   if (current) {
     scene.remove(current.group);
     current.dispose?.();
     disposeGroup(current.group);
   }
-  autoRotate = true;
-  current = name === "surface" ? createAgamograph() : createFountain();
+  if (!soft) fountainModes = rollFountainModes(); // new modes only on a full render
+  newScheme(); // colors always change
+  current = name === "surface" ? createAgamograph() : createFountain(fountainModes);
   renderer.setClearColor(new THREE.Color(current.background ?? 0xf4f1e8));
   scene.add(current.group);
-  camera.up.set(0, 1, 0); // reset any roll so one piece's orbit doesn't carry over
-  camera.position.set(...current.camera);
-  controls.target.set(0, 0, 0);
-  controls.update();
+  if (!soft) {
+    // full render: reset the camera/orbit to the creation's default view
+    autoRotate = true;
+    camera.up.set(0, 1, 0);
+    camera.position.set(...current.camera);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }
+  currentName = name;
   buildUI(name);
 }
 
