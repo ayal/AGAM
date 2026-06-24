@@ -25,11 +25,13 @@ renderer.setPixelRatio(AUTO ? Math.min(window.devicePixelRatio, 1.75) : window.d
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+if (!AUTO) {
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
 
 // TrackballControls: free tumble (no pole "stuck" point); 1 finger rotates,
 // two fingers zoom/pan.
@@ -175,6 +177,57 @@ const lerpN = (a: number, b: number, t: number) => a + (b - a) * t;
 const smooth = (t: number) => t * t * (3 - 2 * t); // ease in/out
 
 if (AUTO) {
+  // ---- presentation frame -------------------------------------------------
+  // Compose for the 4640×1760 screen with a thin gallery-line border and a
+  // title. Letterboxed so it looks identical on any monitor; on the real
+  // screen it fills edge to edge.
+  const TARGET_ASPECT = 4640 / 1760;
+  const surround = document.createElement("div");
+  surround.style.cssText =
+    "position:fixed;inset:0;background:#101012;display:flex;" +
+    "align-items:center;justify-content:center;z-index:1;";
+  const frame = document.createElement("div");
+  frame.style.cssText =
+    "position:relative;overflow:hidden;background:#ccced0;" +
+    "outline:2px solid #2b2b29;outline-offset:-2px;"; // outer gallery line
+  renderer.domElement.style.cssText = "display:block;width:100%;height:100%;";
+  frame.appendChild(renderer.domElement); // move the canvas inside the frame
+  const innerLine = document.createElement("div"); // the second (inner) line
+  innerLine.style.cssText =
+    "position:absolute;inset:14px;border:1px solid #2b2b29;" +
+    "pointer-events:none;z-index:3;";
+  frame.appendChild(innerLine);
+  const title = document.createElement("div");
+  title.style.cssText =
+    "position:absolute;top:3.4%;left:0;right:0;text-align:center;" +
+    "pointer-events:none;z-index:3;text-transform:uppercase;letter-spacing:.3em;" +
+    "font-family:'Helvetica Neue',Arial,sans-serif;color:#2b2b29;" +
+    "text-shadow:0 1px 2px rgba(255,255,255,.25);";
+  title.innerHTML =
+    '<span style="font-weight:600">Agam</span>' +
+    '<span style="opacity:.45;margin:0 .55em">&mdash;</span>' +
+    '<span style="font-weight:300">Fire &amp; Water</span>';
+  frame.appendChild(title);
+  surround.appendChild(frame);
+  document.body.appendChild(surround);
+
+  camera.fov = 52; // a tighter vertical FOV fills the short, wide frame
+
+  const frameLayout = () => {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let w = vw, h = w / TARGET_ASPECT;
+    if (h > vh) { h = vh; w = h * TARGET_ASPECT; }
+    frame.style.width = `${w}px`;
+    frame.style.height = `${h}px`;
+    renderer.setSize(w, h, false); // false: keep the canvas's 100% CSS size
+    camera.aspect = TARGET_ASPECT;
+    camera.updateProjectionMatrix();
+    innerLine.style.inset = `${Math.max(8, Math.round(h * 0.016))}px`;
+    title.style.fontSize = `${Math.max(11, Math.round(h * 0.034))}px`;
+  };
+  frameLayout();
+  window.addEventListener("resize", frameLayout);
+
   const DEG = Math.PI / 180;
   // The pool disc reaches ~r23 and the tower ~r17, so the closest distance stays
   // well outside the geometry. Elevation never dips under the pool nor looks
@@ -239,9 +292,9 @@ if (AUTO) {
   // self-triggered re-renders, hidden behind a cross-fade through the bg colour.
   const fader = document.createElement("div");
   fader.style.cssText =
-    "position:fixed;inset:0;background:#ccced0;opacity:0;pointer-events:none;" +
-    "z-index:5;transition:opacity 280ms ease;";
-  document.body.appendChild(fader);
+    "position:absolute;inset:0;background:#ccced0;opacity:0;pointer-events:none;" +
+    "z-index:2;transition:opacity 280ms ease;"; // below the border/title (z3)
+  frame.appendChild(fader);
   let swapping = false;
   const crossfade = (swap: () => void) => {
     if (swapping) return;
