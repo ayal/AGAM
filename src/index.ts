@@ -208,6 +208,15 @@ if (AUTO) {
     '<span style="opacity:.45;margin:0 .55em">&mdash;</span>' +
     '<span style="font-weight:300">Fire &amp; Water</span>';
   frame.appendChild(title);
+  // small attribution / link, bottom-right corner
+  const credit = document.createElement("a");
+  credit.href = "https://ayal.github.io/AGAM";
+  credit.textContent = "ayal.github.io/AGAM";
+  credit.style.cssText =
+    "position:absolute;right:2.2%;bottom:3%;z-index:3;" +
+    "font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:.12em;" +
+    "color:#2b2b29;opacity:.5;text-decoration:none;";
+  frame.appendChild(credit);
   surround.appendChild(frame);
   document.body.appendChild(surround);
 
@@ -224,6 +233,7 @@ if (AUTO) {
     camera.updateProjectionMatrix();
     innerLine.style.inset = `${Math.max(8, Math.round(h * 0.016))}px`;
     title.style.fontSize = `${Math.max(11, Math.round(h * 0.034))}px`;
+    credit.style.fontSize = `${Math.max(9, Math.round(h * 0.013))}px`;
   };
   frameLayout();
   window.addEventListener("resize", frameLayout);
@@ -335,10 +345,54 @@ if (AUTO) {
     }
   };
 
-  // hardening for an unattended multi-day run
+  // ---- self-update / hardening for an unattended multi-day run ------------
+  // A graceful reload: fade the whole screen to the backdrop colour, then
+  // reload. The fresh page builds on the same backdrop, so there's no white
+  // flash and the swap reads as a slow dip rather than a glitch.
+  const blackout = document.createElement("div");
+  blackout.style.cssText =
+    "position:fixed;inset:0;background:#101012;opacity:0;pointer-events:none;" +
+    "z-index:50;transition:opacity 450ms ease;";
+  document.body.appendChild(blackout);
+  let reloading = false;
+  const gracefulReload = () => {
+    if (reloading) return;
+    reloading = true;
+    blackout.style.opacity = "1";
+    setTimeout(() => location.reload(), 500);
+  };
+
+  // Auto-update on deploy: poll the deployed index.html and reload when the
+  // built bundle's filename hash changes. GitHub Pages caches HTML on its CDN
+  // (~10 min), so a new build is picked up within roughly that window — fine
+  // for a kiosk. A change must be seen on two consecutive polls before we act,
+  // so a flapping/half-propagated CDN can never trigger a reload loop.
+  const bundleRe = /assets\/index-[\w-]+\.js/;
+  const running = (
+    [...document.querySelectorAll("script")] as HTMLScriptElement[]
+  ).map((s) => s.src).find((s) => bundleRe.test(s)) ?? ""; // "" in dev → never reloads
+  let pending = "";
+  const checkForUpdate = async () => {
+    try {
+      const res = await fetch(`${location.pathname}?_=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const m = (await res.text()).match(bundleRe);
+      if (!m || !running) return;
+      const latest = m[0];
+      if (running.includes(latest)) { pending = ""; return; } // already on latest
+      if (latest === pending) gracefulReload(); // stable new build → update
+      else pending = latest; // first sighting — confirm on the next poll
+    } catch {
+      /* offline / transient — keep running, retry next tick */
+    }
+  };
+  setInterval(checkForUpdate, 60_000);
+
+  // recover from a lost GL context (driver hiccup) instead of going black
   renderer.domElement.addEventListener("webglcontextlost", (e) => e.preventDefault());
-  renderer.domElement.addEventListener("webglcontextrestored", () => location.reload());
-  setTimeout(() => location.reload(), 3 * 60 * 60 * 1000); // periodic safety reload
+  renderer.domElement.addEventListener("webglcontextrestored", gracefulReload);
+  // long backstop reload in case something drifts over days of uptime
+  setTimeout(gracefulReload, 6 * 60 * 60 * 1000);
 }
 
 // ---------------------------------------------------------------------------

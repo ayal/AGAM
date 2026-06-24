@@ -12,6 +12,8 @@ body {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   overflow: hidden;
+  /* neutral backdrop so a reload (e.g. kiosk auto-update) never flashes white */
+  background: #101012;
 }
 
 canvas {
