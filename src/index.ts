@@ -104,10 +104,12 @@ function makeCredit(): HTMLAnchorElement {
   a.innerHTML =
     '<span class="credit-full">Homage to Yaacov Agam&rsquo;s ' +
     '<span style="font-style:italic">Fire &amp; Water Fountain</span> &middot; by Ayal Gelles</span>' +
-    '<span class="credit-short">by Ayal Gelles</span>';
+    '<span class="credit-short">by Ayal Gelles</span>' +
+    '<span class="credit-url">ayal.github.io/AGAM</span>'; // always shown — kiosk isn't clickable
   a.style.cssText =
-    "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;white-space:nowrap;" +
-    "color:#4e5154;opacity:.75;text-decoration:none;";
+    "display:inline-block;text-align:right;line-height:1.45;" +
+    "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;" +
+    "color:#4e5154;opacity:.85;text-decoration:none;";
   return a;
 }
 
@@ -115,6 +117,8 @@ function makeCredit(): HTMLAnchorElement {
 // toolbar. (The kiosk frame itself adapts in frameLayout.)
 const responsiveCss = document.createElement("style");
 responsiveCss.textContent =
+  ".credit-full,.credit-short,.credit-url{white-space:nowrap}" +
+  ".credit-url{display:block;opacity:.72;letter-spacing:.09em;font-size:.92em}" +
   ".credit-short{display:none}" +
   "#ui-bar a,#ui-bar button{-webkit-tap-highlight-color:transparent}" +
   "@media (max-width:640px){" +
@@ -312,7 +316,7 @@ if (AUTO) {
     innerLine.style.inset = `${Math.max(8, Math.round(Math.min(w, h) * 0.02))}px`;
     // cap the title by width too, so it never overflows a narrow frame
     title.style.fontSize = `${Math.max(11, Math.min(Math.round(h * 0.034), Math.round(w * 0.045)))}px`;
-    credit.style.fontSize = `${Math.max(9, Math.round(Math.min(h, w * 0.6) * 0.013))}px`;
+    credit.style.fontSize = `${Math.max(11, Math.round(Math.min(h * 0.014, w * 0.022)))}px`;
   };
   frameLayout();
   window.addEventListener("resize", frameLayout);
@@ -410,6 +414,22 @@ if (AUTO) {
   let nextSoft = rand(30, 45); // frequent recolour + new patterns (keeps camera)
   let nextFull = rand(180, 300); // rarer full mode change (pool style / B&W)
 
+  // Occasionally cut the water or fire for a short beat, then bring it back —
+  // like a fountain catching its breath. Toggled via the current creation's own
+  // fire/water setters (a rebuild resets them to on, which is fine).
+  const setFeature = (label: string, on: boolean) =>
+    current?.toggles?.find((t) => t.label === label)?.set(on);
+  type Interlude = { offUntil: number; next: number };
+  const fireBeat: Interlude = { offUntil: 0, next: rand(35, 80) };
+  const waterBeat: Interlude = { offUntil: 0, next: rand(50, 100) };
+  const runInterlude = (label: string, b: Interlude, now: number, offMin: number, offMax: number, gapMin: number, gapMax: number) => {
+    if (b.offUntil) {
+      if (now >= b.offUntil) { setFeature(label, true); b.offUntil = 0; b.next = now + rand(gapMin, gapMax); }
+    } else if (now >= b.next) {
+      setFeature(label, false); b.offUntil = now + rand(offMin, offMax);
+    }
+  };
+
   autoTick = (now: number) => {
     // camera glide
     if (now >= legStart + legDur) {
@@ -441,6 +461,10 @@ if (AUTO) {
       crossfade(() => setCreation("fountain", true));
       nextSoft = now + rand(30, 45);
     }
+
+    // brief water / fire interludes (water rests a touch longer than fire)
+    runInterlude("water", waterBeat, now, 3, 7, 50, 100);
+    runInterlude("fire", fireBeat, now, 2, 5, 35, 80);
   };
 
   // ---- self-update / hardening for an unattended multi-day run ------------
