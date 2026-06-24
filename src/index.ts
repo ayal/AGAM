@@ -260,16 +260,9 @@ if (AUTO) {
     "position:fixed;inset:0;background:#101012;display:flex;" +
     "align-items:center;justify-content:center;z-index:1;";
   const frame = document.createElement("div");
-  frame.style.cssText =
-    "position:relative;overflow:hidden;background:#ccced0;" +
-    "outline:2px solid #2b2b29;outline-offset:-2px;"; // outer gallery line
+  frame.style.cssText = "position:relative;overflow:hidden;background:#ccced0;";
   renderer.domElement.style.cssText = "display:block;width:100%;height:100%;";
   frame.appendChild(renderer.domElement); // move the canvas inside the frame
-  const innerLine = document.createElement("div"); // the second (inner) line
-  innerLine.style.cssText =
-    "position:absolute;inset:14px;border:1px solid #2b2b29;" +
-    "pointer-events:none;z-index:3;";
-  frame.appendChild(innerLine);
   const title = document.createElement("div");
   title.style.cssText =
     "position:absolute;top:3.4%;left:0;right:0;text-align:center;" +
@@ -313,7 +306,6 @@ if (AUTO) {
     renderer.setSize(w, h, false); // false: keep the canvas's 100% CSS size
     camera.aspect = aspect;
     camera.updateProjectionMatrix();
-    innerLine.style.inset = `${Math.max(8, Math.round(Math.min(w, h) * 0.02))}px`;
     // cap the title by width too, so it never overflows a narrow frame
     title.style.fontSize = `${Math.max(11, Math.min(Math.round(h * 0.034), Math.round(w * 0.045)))}px`;
     credit.style.fontSize = `${Math.max(11, Math.round(Math.min(h * 0.014, w * 0.022)))}px`;
