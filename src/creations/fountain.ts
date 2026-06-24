@@ -279,11 +279,14 @@ export function createFountain(
     ringGroups.push(ring);
   }
   // per-ring spin speeds: alternating directions, varied magnitude (gentle)
-  // each ring spins independently: a random direction and a gentle random speed,
-  // re-rolled per render so adjacent rings read as clearly unsynced.
-  const ringSpeeds = ringGroups.map(
-    () => (Math.random() < 0.5 ? 1 : -1) * (0.0006 + Math.random() * 0.0012),
-  );
+  // each ring spins independently and re-rolls its own direction + gentle speed
+  // on a timer during playback (eased, so it slows, stops and reverses
+  // naturally) — so adjacent rings drift in and out of sync on their own.
+  const randSpin = () => (Math.random() < 0.5 ? 1 : -1) * (0.0006 + Math.random() * 0.0012);
+  const ringSpeed = ringGroups.map(randSpin); // current (eased) speed
+  const ringTarget = ringSpeed.slice();        // speed it's easing toward
+  const ringNext: number[] = ringGroups.map(() => 0); // time of next re-roll
+  let ringInit = false;
 
   // ---- water jets: arcs from the top 3 rings + a center jet on the topmost,
   // all with changing "pressure" (parabola size). ----
@@ -408,11 +411,23 @@ export function createFountain(
       cubeRT.dispose(); // free the cube render target
     },
     update: (time, autoRotate, env) => {
+      const dt = Math.min(0.05, Math.max(0, time - lastT));
+      lastT = time;
       if (autoRotate) {
         // auto/kiosk mode orbits the camera, so it asks us to hold the group
         // still (spinGroup === false) while the rings keep turning.
         if (env?.spinGroup !== false) group.rotation.y += 0.0001;
-        for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
+        if (!ringInit) {
+          for (let t = 0; t < ringGroups.length; t++) ringNext[t] = time + 6 + Math.random() * 12;
+          ringInit = true;
+        }
+        for (let t = 0; t < ringGroups.length; t++) {
+          // re-roll this ring's target spin now and then; ease toward it
+          if (time >= ringNext[t]) { ringTarget[t] = randSpin(); ringNext[t] = time + 8 + Math.random() * 14; }
+          const step = 0.0014 * dt;
+          ringSpeed[t] += Math.max(-step, Math.min(step, ringTarget[t] - ringSpeed[t]));
+          ringGroups[t].rotation.y += ringSpeed[t];
+        }
       }
       // animate the pool's reflective water surface
       (pool.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
@@ -426,8 +441,6 @@ export function createFountain(
       }
 
       // ease fire/water intensity toward their on/off targets (no abrupt cut)
-      const dt = Math.min(0.05, Math.max(0, time - lastT));
-      lastT = time;
       const RAMP = 1.3; // seconds for a full fade in/out
       const approach = (lvl: number, on: boolean) => {
         const step = dt / RAMP;
