@@ -341,9 +341,16 @@ if (AUTO) {
     }
     applyOrbit();
 
-    // self re-render (full takes priority; it implies fresh colours too)
+    // self re-render. The periodic "full" change ALTERNATES the pool's
+    // reflection type (planar mirror <-> soft cube-map water) so the look keeps
+    // visibly changing rather than risking the same roll twice; the frequent
+    // "soft" change just re-rolls colours + patterns. Both keep the camera glide
+    // going (soft render preserves modes + camera).
     if (now >= nextFull) {
-      crossfade(() => setCreation("fountain", false, true));
+      // reflection-type switching is disabled for now (cube-map hides the
+      // fire); re-enable by flipping crisp here once that's fixed. Until then
+      // this is just a slower full re-roll alongside the frequent soft one.
+      crossfade(() => setCreation("fountain", true));
       nextFull = now + rand(180, 300);
       nextSoft = now + rand(30, 45);
     } else if (now >= nextSoft) {

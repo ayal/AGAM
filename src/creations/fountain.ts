@@ -17,7 +17,10 @@ export interface FountainModes {
   crisp: boolean;
 }
 export const rollFountainModes = (): FountainModes => ({
-  crisp: Math.random() < 0.5,
+  // The soft cube-map (non-planar) reflection is disabled for now — the fire
+  // reads poorly against it. Its code is kept below; always use the crisp
+  // planar mirror. To re-enable variety, restore `Math.random() < 0.5`.
+  crisp: true,
 });
 
 export function createFountain(
