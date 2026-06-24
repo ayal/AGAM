@@ -397,7 +397,9 @@ export function createFountain(
     },
     update: (time, autoRotate, env) => {
       if (autoRotate) {
-        group.rotation.y += 0.0001;
+        // auto/kiosk mode orbits the camera, so it asks us to hold the group
+        // still (spinGroup === false) while the rings keep turning.
+        if (env?.spinGroup !== false) group.rotation.y += 0.0001;
         for (let t = 0; t < ringGroups.length; t++) ringGroups[t].rotation.y += ringSpeeds[t];
       }
       // animate the pool's reflective water surface

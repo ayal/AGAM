@@ -19,7 +19,13 @@ export interface Creation {
   update?: (
     time: number,
     autoRotate: boolean,
-    env?: { renderer: THREE.WebGLRenderer; scene: THREE.Scene },
+    env?: {
+      renderer: THREE.WebGLRenderer;
+      scene: THREE.Scene;
+      // false = don't spin the whole group (auto/kiosk mode orbits the camera
+      // instead, so the group should hold still while the rings keep spinning).
+      spinGroup?: boolean;
+    },
   ) => void;
   toggles?: Toggle[]; // optional feature toggles (e.g. fire / water / music)
   dispose?: () => void; // tear down any DOM/listeners it added
