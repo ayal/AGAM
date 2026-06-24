@@ -347,8 +347,9 @@ if (AUTO) {
 
   // A small repertoire of shot types (picked by weight) keeps the motion varied
   // and intentional rather than aimless drift. az always sweeps to a new angle.
-  // never let the camera drop below the water (pool sits at ~y -11)
-  const Y_FLOOR = -8;
+  // never let the camera drop below the water (pool sits at ~y -11); sitting
+  // this low lets it get under the bottom ring and look up at the tower
+  const Y_FLOOR = -10;
   const pickLeg = (now: number) => {
     from = { ...orbit };
     const dir = Math.random() < 0.5 ? 1 : -1;
@@ -357,15 +358,15 @@ if (AUTO) {
     const az = orbit.az + dir * (big ? rand(320 * DEG, 520 * DEG) : rand(60 * DEG, 220 * DEG));
     const r = Math.random();
     let el: number, dist: number, lookY: number, dur: number;
-    if (r < 0.22) {
+    if (r < 0.20) {
       // push-in: glide in close on the rings so a composition resolves
       el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11);
-    } else if (r < 0.42) {
+    } else if (r < 0.38) {
       // aerial: look down on the cog rings + the circular pool (not flat-on top)
       el = rand(52 * DEG, 78 * DEG); dist = rand(80, 118); lookY = rand(-3, 1); dur = rand(10, 16);
-    } else if (r < 0.60) {
-      // low: skim near the water and look up at the looming tower
-      el = rand(-15 * DEG, 4 * DEG); dist = rand(58, 78); lookY = rand(6, 12); dur = rand(9, 14);
+    } else if (r < 0.66) {
+      // low / from-below: drop under the bottom ring and look up the tower
+      el = rand(-22 * DEG, 2 * DEG); dist = rand(54, 76); lookY = rand(2, 10); dur = rand(11, 17);
     } else {
       // mid orbit: the everyday three-quarter view
       el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 16);
