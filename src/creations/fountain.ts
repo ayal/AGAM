@@ -29,8 +29,8 @@ export function createFountain(
 ): Creation {
   const group = new THREE.Group();
 
-  const RADII = [7, 12, 16, 10.5, 6.5];
-  const HEIGHTS = [3, 3.6, 6.5, 4, 3];
+  const RADII = [7, 13.5, 16, 12, 6.5];
+  const HEIGHTS = [3, 4.7, 6.5, 5.2, 3];
   const TIERS = RADII.length;
   const gap = 0.3;
   const totalH = HEIGHTS.reduce((a, b) => a + b, 0) + gap * (TIERS - 1);
