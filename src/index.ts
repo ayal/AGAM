@@ -421,8 +421,8 @@ if (AUTO) {
   const setFeature = (label: string, on: boolean) =>
     current?.toggles?.find((t) => t.label === label)?.set(on);
   type Interlude = { offUntil: number; next: number };
-  const fireBeat: Interlude = { offUntil: 0, next: rand(35, 80) };
-  const waterBeat: Interlude = { offUntil: 0, next: rand(50, 100) };
+  const fireBeat: Interlude = { offUntil: 0, next: rand(28, 60) };
+  const waterBeat: Interlude = { offUntil: 0, next: rand(35, 70) };
   const runInterlude = (label: string, b: Interlude, now: number, offMin: number, offMax: number, gapMin: number, gapMax: number) => {
     if (b.offUntil) {
       if (now >= b.offUntil) { setFeature(label, true); b.offUntil = 0; b.next = now + rand(gapMin, gapMax); }
@@ -464,8 +464,8 @@ if (AUTO) {
     }
 
     // brief water / fire interludes (water rests a touch longer than fire)
-    runInterlude("water", waterBeat, now, 3, 7, 50, 100);
-    runInterlude("fire", fireBeat, now, 2, 5, 35, 80);
+    runInterlude("water", waterBeat, now, 5, 10, 35, 70);
+    runInterlude("fire", fireBeat, now, 4, 8, 28, 60);
   };
 
   // ---- self-update / hardening for an unattended multi-day run ------------
