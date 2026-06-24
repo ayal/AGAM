@@ -279,7 +279,11 @@ export function createFountain(
     ringGroups.push(ring);
   }
   // per-ring spin speeds: alternating directions, varied magnitude (gentle)
-  const ringSpeeds = ringGroups.map((_, t) => (t % 2 === 0 ? 1 : -1) * (0.0007 + 0.00025 * t));
+  // each ring spins independently: a random direction and a gentle random speed,
+  // re-rolled per render so adjacent rings read as clearly unsynced.
+  const ringSpeeds = ringGroups.map(
+    () => (Math.random() < 0.5 ? 1 : -1) * (0.0006 + Math.random() * 0.0012),
+  );
 
   // ---- water jets: arcs from the top 3 rings + a center jet on the topmost,
   // all with changing "pressure" (parabola size). ----
