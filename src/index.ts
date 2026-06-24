@@ -176,11 +176,10 @@ const smooth = (t: number) => t * t * (3 - 2 * t); // ease in/out
 
 if (AUTO) {
   const DEG = Math.PI / 180;
-  // viewpoint bounds. The pool disc reaches ~r23 and the tower ~r17, so the
-  // closest distance stays well outside the geometry; elevation never dips
-  // under the pool nor looks straight down.
-  const DIST = [62, 122] as const;
-  const ELEV = [4 * DEG, 42 * DEG] as const;
+  // The pool disc reaches ~r23 and the tower ~r17, so the closest distance stays
+  // well outside the geometry. Elevation never dips under the pool nor looks
+  // perfectly straight down (which would read flat).
+  const DIST = [58, 122] as const;
   const LOOKY = [-1, 5] as const;
 
   // continuous orbit state (az is NOT wrapped, so legs can sweep either way and
@@ -199,18 +198,30 @@ if (AUTO) {
   let holdUntil = 0;
   let holding = true;
 
+  // A small repertoire of shot types (picked by weight) keeps the motion varied
+  // and intentional rather than aimless drift. az always sweeps to a new angle.
   const pickLeg = (now: number) => {
     from = { ...orbit };
-    const pushIn = Math.random() < 0.3; // sometimes glide in close on one ring
     const dir = Math.random() < 0.5 ? 1 : -1;
-    to = {
-      az: orbit.az + dir * rand(60 * DEG, 200 * DEG),
-      el: pushIn ? rand(8 * DEG, 20 * DEG) : rand(ELEV[0], ELEV[1]),
-      dist: pushIn ? rand(DIST[0], 78) : rand(DIST[0], DIST[1]),
-      lookY: pushIn ? rand(0, 7) : rand(LOOKY[0], LOOKY[1]),
-    };
+    const az = orbit.az + dir * rand(60 * DEG, 220 * DEG);
+    const r = Math.random();
+    let el: number, dist: number, lookY: number, dur: number;
+    if (r < 0.22) {
+      // push-in: glide in close on the rings so a composition resolves
+      el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11);
+    } else if (r < 0.44) {
+      // aerial: look down on the cog rings + the circular pool (not flat-on top)
+      el = rand(52 * DEG, 78 * DEG); dist = rand(80, 118); lookY = rand(-3, 1); dur = rand(10, 16);
+    } else if (r < 0.56) {
+      // low / heroic: near eye-level, the tower looming overhead
+      el = rand(-2 * DEG, 8 * DEG); dist = rand(72, 112); lookY = rand(3, 8); dur = rand(9, 14);
+    } else {
+      // mid orbit: the everyday three-quarter view
+      el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 16);
+    }
+    to = { az, el, dist, lookY };
     legStart = now;
-    legDur = pushIn ? rand(7, 11) : rand(9, 16);
+    legDur = dur;
     holding = false;
   };
 
