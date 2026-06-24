@@ -381,6 +381,11 @@ export function createFountain(
   // ---- feature state + music ----
   let fireOn = true;
   let waterOn = true;
+  // eased 0..1 intensities so toggling ramps the jets/flames down/up smoothly
+  // (in both manual and auto mode) instead of cutting abruptly.
+  let fireLvl = 1;
+  let waterLvl = 1;
+  let lastT = 0;
   const music = createMusic();
 
   return {
@@ -416,17 +421,30 @@ export function createFountain(
         for (const w of waterMeshes) w.visible = true;
       }
 
+      // ease fire/water intensity toward their on/off targets (no abrupt cut)
+      const dt = Math.min(0.05, Math.max(0, time - lastT));
+      lastT = time;
+      const RAMP = 1.3; // seconds for a full fade in/out
+      const approach = (lvl: number, on: boolean) => {
+        const step = dt / RAMP;
+        const target = on ? 1 : 0;
+        return lvl < target ? Math.min(target, lvl + step) : Math.max(target, lvl - step);
+      };
+      waterLvl = approach(waterLvl, waterOn);
+      fireLvl = approach(fireLvl, fireOn);
+
       // water jets
-      jets.visible = waterOn;
-      if (waterOn) {
+      jets.visible = waterLvl > 0.001;
+      if (jets.visible) {
+        (jets.material as THREE.PointsMaterial).opacity = 0.95 * Math.min(1, waterLvl * 1.6);
         for (let n = 0; n < COUNT; n++) {
           const d = drops[n];
           const tt = (time + d.ph) % d.life;
           const p = d.grp === 3 ? centerPressure(time) : ringPressure(time - tt, d.grp);
           if (p < 0.04) { positions[n * 3 + 1] = -9999; continue; } // off → hidden
           const pn = p > 1 ? 1 : p;
-          const vy = d.up * p; // more pressure -> higher
-          const vo = d.out * (1 - 0.7 * pn); // more pressure -> narrower (less outward)
+          const vy = d.up * p * waterLvl; // intensity scales arc height -> collapses smoothly
+          const vo = d.out * (1 - 0.7 * pn) * waterLvl; // ...and reach, so it sinks back in
           const rad = vo * tt;
           const y = d.oy + vy * tt - 0.5 * G * tt * tt;
           if (y < poolY - 0.3) { positions[n * 3 + 1] = -9999; continue; }
@@ -439,9 +457,10 @@ export function createFountain(
 
       // fire is always present when toggled on (even with water); height
       // flickers with its own changing "pressure"
-      fire.visible = fireOn;
-      if (fireOn) {
-        const fs = fireScale(time);
+      fire.visible = fireLvl > 0.001;
+      if (fire.visible) {
+        (fire.material as THREE.PointsMaterial).opacity = 0.92 * Math.min(1, fireLvl * 1.5);
+        const fs = fireScale(time) * fireLvl; // intensity lowers the flames to nothing
         for (let n = 0; n < FCOUNT; n++) {
           const tt = (time + fphase[n]) % flife[n];
           const f = tt / flife[n];
