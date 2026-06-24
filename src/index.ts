@@ -46,25 +46,89 @@ renderer.domElement.addEventListener("dblclick", (e) => e.preventDefault());
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
-const BTN = "border:none;background:none;cursor:pointer;padding:0;font:13px sans-serif;letter-spacing:.02em;";
 // ?thumb → a clean capture mode for the share thumbnail (no UI, no spin, a
 // colourful crisp render, zoomed in).
 const THUMB = new URLSearchParams(location.search).has("thumb");
 const bar = document.createElement("div");
-bar.style.cssText = "position:fixed;top:14px;left:16px;z-index:9999;display:flex;gap:16px;align-items:center;";
-if (!THUMB && !AUTO) document.body.appendChild(bar);
-
-function styleBtn(b: HTMLButtonElement, on: boolean) {
-  // colors chosen to read on both the cream (surface) and gray (fountain) bg
-  b.style.cssText = BTN + `color:${on ? "#111" : "#5f6266"};font-weight:${on ? "700" : "400"};`;
+bar.id = "ui-bar";
+bar.style.cssText = "position:fixed;top:14px;left:14px;z-index:9999;display:flex;gap:4px;align-items:center;";
+if (!THUMB && !AUTO) {
+  document.body.appendChild(bar);
+  const credit = makeCredit(); // bottom-right homage in regular mode
+  credit.style.position = "fixed";
+  credit.style.right = "14px";
+  credit.style.bottom = "12px";
+  credit.style.zIndex = "9999";
+  document.body.appendChild(credit);
 }
-function makeToggle(label: string, initial: boolean, onChange: (on: boolean) => void) {
+
+// ---- inline stroke icons (Lucide-style; no icon font to load) -------------
+const ICONS: Record<string, string> = {
+  grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+  fountain: '<circle cx="12" cy="4" r="1.3"/><path d="M12 5.3v6.7"/><path d="M12 7c-2.6.5-4.2 2.6-4.7 5M12 7c2.6.5 4.2 2.6 4.7 5"/><path d="M4 14q8 3.6 16 0"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/>',
+  orbit: '<ellipse cx="12" cy="12" rx="9.5" ry="4"/><circle cx="12" cy="12" r="2.3"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  droplets: '<path d="M7 16.3a4 4 0 0 0 4-4c0-1.2-.6-2.3-1.7-3.2S7.3 6.8 7 5.3c-.3 1.5-1.1 2.8-2.3 3.8S3 11.1 3 12.3a4 4 0 0 0 4 4z"/><path d="M12.6 6.6A11 11 0 0 0 14 3c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 0 1-11.9 5"/>',
+  sound: '<path d="M11 4.7 6.5 8.3H3v7.4h3.5L11 19.3z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.8 5.2a9 9 0 0 1 0 13.6"/>',
+  play: '<path d="M7 4.5 19 12 7 19.5z"/>',
+};
+function svg(name: string): string {
+  return (
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+    ' stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+    ICONS[name] + "</svg>"
+  );
+}
+function styleIcon(el: HTMLElement, on: boolean) {
+  // dark when active/selected, muted gray otherwise — reads on cream & gray bg
+  el.style.color = on ? "#1d1d1f" : "#6b6e72";
+  el.style.opacity = on ? "1" : ".8";
+}
+function iconBtn(name: string, label: string): HTMLButtonElement {
   const b = document.createElement("button");
+  b.innerHTML = svg(name);
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.style.cssText =
+    "border:none;background:none;cursor:pointer;padding:5px;display:inline-flex;line-height:0;";
+  return b;
+}
+// Homage / attribution credit, shared by kiosk mode (inside the frame) and
+// regular mode (fixed bottom-right). Caller sets position.
+function makeCredit(): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.href = "https://ayal.github.io/AGAM";
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.innerHTML =
+    '<span class="credit-full">Homage to Yaacov Agam&rsquo;s ' +
+    '<span style="font-style:italic">Fire &amp; Water Fountain</span> &middot; by Ayal Gelles</span>' +
+    '<span class="credit-short">by Ayal Gelles</span>';
+  a.style.cssText =
+    "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;white-space:nowrap;" +
+    "color:#4e5154;opacity:.75;text-decoration:none;";
+  return a;
+}
+
+// Responsive bits for small screens: a shorter credit and a tighter, wrapping
+// toolbar. (The kiosk frame itself adapts in frameLayout.)
+const responsiveCss = document.createElement("style");
+responsiveCss.textContent =
+  ".credit-short{display:none}" +
+  "#ui-bar a,#ui-bar button{-webkit-tap-highlight-color:transparent}" +
+  "@media (max-width:640px){" +
+  "  #ui-bar{gap:6px;left:8px;top:8px;flex-wrap:wrap}" +
+  "  .credit-full{display:none}.credit-short{display:inline}" +
+  "}";
+document.head.appendChild(responsiveCss);
+
+function makeToggle(icon: string, label: string, initial: boolean, onChange: (on: boolean) => void) {
+  const b = iconBtn(icon, label);
   let on = initial;
-  b.textContent = label;
-  styleBtn(b, on);
-  b.onclick = () => { on = !on; styleBtn(b, on); onChange(on); };
-  (b as any).setOn = (v: boolean) => { on = v; styleBtn(b, on); };
+  styleIcon(b, on);
+  b.onclick = () => { on = !on; styleIcon(b, on); onChange(on); };
+  (b as any).setOn = (v: boolean) => { on = v; styleIcon(b, on); };
   return b;
 }
 
@@ -96,36 +160,41 @@ function setSpin(on: boolean) {
   spinBtn?.setOn?.(on);
 }
 
+const TOGGLE_ICONS: Record<string, string> = { fire: "flame", water: "droplets", sound: "sound" };
+
 function buildUI(name: string) {
   bar.replaceChildren();
   for (const sel of ["surface", "fountain"]) {
-    const b = document.createElement("button");
-    b.textContent = sel;
-    styleBtn(b, sel === name);
+    const b = iconBtn(sel === "surface" ? "grid" : "fountain", sel);
+    styleIcon(b, sel === name);
     // clicking the current creation re-rolls patterns+colors but keeps the modes
     // & camera (soft); clicking the other one switches (full render).
     b.onclick = () => setCreation(sel, sel === currentName);
     bar.appendChild(b);
   }
   // refresh = a full new render (new modes, colors, patterns, reset camera)
-  const refresh = document.createElement("button");
-  refresh.textContent = "↻";
-  styleBtn(refresh, false);
-  refresh.style.fontSize = "17px"; // glyph reads small; bump it to match the labels
-  refresh.style.lineHeight = "1";
-  refresh.title = "new render";
+  const refresh = iconBtn("refresh", "new render");
+  styleIcon(refresh, false);
   refresh.onclick = () => setCreation(name, false);
   bar.appendChild(refresh);
+  // link into the unattended kiosk / auto mode
+  const auto = document.createElement("a");
+  auto.innerHTML = svg("play");
+  auto.href = "?auto";
+  auto.title = "fullscreen kiosk mode (camera glides, self-updates)";
+  auto.setAttribute("aria-label", "auto / kiosk mode");
+  auto.style.cssText = "display:inline-flex;line-height:0;padding:5px;text-decoration:none;";
+  styleIcon(auto, false);
+  bar.appendChild(auto);
   if (current?.toggles) {
     const sep = document.createElement("span");
-    sep.textContent = "·";
-    sep.style.cssText = "color:#8b8e91;";
+    sep.style.cssText = "width:1px;height:16px;background:#b9bbbd;margin:0 3px;";
     bar.appendChild(sep);
-    spinBtn = makeToggle("spin", autoRotate, setSpin);
+    spinBtn = makeToggle("orbit", "spin", autoRotate, setSpin);
     bar.appendChild(spinBtn);
     for (const tg of current.toggles) {
       tg.set(tg.initial);
-      bar.appendChild(makeToggle(tg.label, tg.initial, tg.set));
+      bar.appendChild(makeToggle(TOGGLE_ICONS[tg.label] ?? "play", tg.label, tg.initial, tg.set));
     }
   } else {
     spinBtn = null;
@@ -208,14 +277,12 @@ if (AUTO) {
     '<span style="opacity:.45;margin:0 .55em">&mdash;</span>' +
     '<span style="font-weight:300">Fire &amp; Water</span>';
   frame.appendChild(title);
-  // small attribution / link, bottom-right corner
-  const credit = document.createElement("a");
-  credit.href = "https://ayal.github.io/AGAM";
-  credit.textContent = "ayal.github.io/AGAM";
-  credit.style.cssText =
-    "position:absolute;right:2.2%;bottom:3%;z-index:3;" +
-    "font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:.12em;" +
-    "color:#2b2b29;opacity:.5;text-decoration:none;";
+  // homage / attribution, bottom-right corner of the frame
+  const credit = makeCredit();
+  credit.style.position = "absolute";
+  credit.style.right = "2.4%";
+  credit.style.bottom = "3%";
+  credit.style.zIndex = "3";
   frame.appendChild(credit);
   surround.appendChild(frame);
   document.body.appendChild(surround);
@@ -224,16 +291,28 @@ if (AUTO) {
 
   const frameLayout = () => {
     const vw = window.innerWidth, vh = window.innerHeight;
-    let w = vw, h = w / TARGET_ASPECT;
-    if (h > vh) { h = vh; w = h * TARGET_ASPECT; }
+    // On a wide-enough viewport (the real wall, or a desktop landscape window)
+    // lock to the 4640×1760 aspect so the composition is exactly what ships.
+    // On a phone / portrait window that would be a thin letterboxed sliver, so
+    // instead fill the viewport with the scene.
+    const fill = vw / vh < 1.4;
+    let w: number, h: number, aspect: number;
+    if (fill) {
+      w = vw; h = vh; aspect = vw / vh;
+    } else {
+      w = vw; h = w / TARGET_ASPECT;
+      if (h > vh) { h = vh; w = h * TARGET_ASPECT; }
+      aspect = TARGET_ASPECT;
+    }
     frame.style.width = `${w}px`;
     frame.style.height = `${h}px`;
     renderer.setSize(w, h, false); // false: keep the canvas's 100% CSS size
-    camera.aspect = TARGET_ASPECT;
+    camera.aspect = aspect;
     camera.updateProjectionMatrix();
-    innerLine.style.inset = `${Math.max(8, Math.round(h * 0.016))}px`;
-    title.style.fontSize = `${Math.max(11, Math.round(h * 0.034))}px`;
-    credit.style.fontSize = `${Math.max(9, Math.round(h * 0.013))}px`;
+    innerLine.style.inset = `${Math.max(8, Math.round(Math.min(w, h) * 0.02))}px`;
+    // cap the title by width too, so it never overflows a narrow frame
+    title.style.fontSize = `${Math.max(11, Math.min(Math.round(h * 0.034), Math.round(w * 0.045)))}px`;
+    credit.style.fontSize = `${Math.max(9, Math.round(Math.min(h, w * 0.6) * 0.013))}px`;
   };
   frameLayout();
   window.addEventListener("resize", frameLayout);
@@ -253,6 +332,7 @@ if (AUTO) {
     el: Math.asin(d0.y / d0.length()),
     dist: d0.length(),
     lookY: 2,
+    roll: 0, // camera roll (Dutch tilt) about the view axis
   };
   let from = { ...orbit };
   let to = { ...orbit };
@@ -289,7 +369,9 @@ if (AUTO) {
     // clamp the downward angle so the camera can't dip below the pool surface
     el = Math.max(el, Math.asin(Y_FLOOR / dist));
     if (big) dur = Math.max(dur, rand(20, 30)); // keep the grand orbit calm
-    to = { az, el, dist, lookY };
+    // occasionally lean the horizon (Dutch tilt); usually upright
+    const roll = Math.random() < 0.3 ? (Math.random() < 0.5 ? 1 : -1) * rand(7 * DEG, 18 * DEG) : 0;
+    to = { az, el, dist, lookY, roll };
     legStart = now;
     legDur = dur;
     holding = false;
@@ -304,6 +386,7 @@ if (AUTO) {
       orbit.dist * ce * Math.sin(orbit.az),
     );
     camera.lookAt(0, orbit.lookY, 0);
+    if (orbit.roll) camera.rotateZ(orbit.roll); // lean about the view axis
   };
 
   // self-triggered re-renders, hidden behind a cross-fade through the bg colour.
@@ -330,7 +413,7 @@ if (AUTO) {
   autoTick = (now: number) => {
     // camera glide
     if (now >= legStart + legDur) {
-      if (!holding) { orbit.az = to.az; orbit.el = to.el; orbit.dist = to.dist; orbit.lookY = to.lookY; holding = true; holdUntil = now + rand(1.5, 3); }
+      if (!holding) { orbit.az = to.az; orbit.el = to.el; orbit.dist = to.dist; orbit.lookY = to.lookY; orbit.roll = to.roll; holding = true; holdUntil = now + rand(1.5, 3); }
       else if (now >= holdUntil) pickLeg(now);
     } else {
       const t = smooth((now - legStart) / legDur);
@@ -338,6 +421,7 @@ if (AUTO) {
       orbit.el = lerpN(from.el, to.el, t);
       orbit.dist = lerpN(from.dist, to.dist, t);
       orbit.lookY = lerpN(from.lookY, to.lookY, t);
+      orbit.roll = lerpN(from.roll, to.roll, t);
     }
     applyOrbit();
 
