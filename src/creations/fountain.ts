@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { makeStrip } from "../patterns";
 import { createMusic } from "../music";
+import { createFireVolume } from "../fire";
 import type { Creation } from "../creation";
 
 // Agam's Fire & Water Fountain (Dizengoff Square): five stacked rings, profile
@@ -368,90 +369,67 @@ export function createFountain(
   };
 
   // ---- fire at the center top (the "Fire" of Fire & Water) ----
-  // Many small SOFT round sprites (radial-gradient texture, no chunky squares)
-  // rising turbulently from a tight base, tapering inward, and fading from a
-  // hot yellow core through orange to the BACKGROUND colour so the tips simply
-  // dissolve (the old ramp faded to a pale grey, which read as white blobs).
-  const fireSprite = (() => {
+  // Volumetric ray-marched flame (mattatz/THREE.Fire, ported in ../fire). The
+  // gradient texture loads async; the flame sits just above the top ring and
+  // its height flickers via a scale pulse.
+  const fireY0 = topY4 + 0.2;
+  const FIRE_W = 3.2, FIRE_H = 19; // box footprint (flame width) and full height
+  const fire = createFireVolume(new THREE.TextureLoader().load("fire-lut.png"));
+  fire.scale.set(FIRE_W, FIRE_H, FIRE_W);
+  fire.position.set(0, fireY0 + FIRE_H / 2, 0);
+  // stronger, faster turbulence → the flame licks and dies out more raggedly
+  const fmat = fire.material as THREE.ShaderMaterial;
+  fmat.uniforms.magnitude.value = 2.1;
+  fmat.uniforms.lacunarity.value = 2.6;
+  fmat.uniforms.noiseScale.value.set(1, 2, 1, 0.55);
+  group.add(fire);
+
+  // flickering fire height/pressure
+  const fireScale = (t: number) => 0.55 + 0.3 * Math.sin(t * 1.7) + 0.15 * Math.sin(t * 5.3);
+
+  // ---- smoke: a wisp above the flame, only when fire AND water both flow ----
+  const smokeSprite = (() => {
     const s = 64;
     const c = document.createElement("canvas");
     c.width = c.height = s;
     const ctx = c.getContext("2d")!;
     const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.3, "rgba(255,255,255,0.6)");
-    g.addColorStop(0.6, "rgba(255,255,255,0.18)");
+    g.addColorStop(0, "rgba(255,255,255,0.9)");
+    g.addColorStop(0.5, "rgba(255,255,255,0.3)");
     g.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, s, s);
     return new THREE.CanvasTexture(c);
   })();
-  const FCOUNT = 520;
-  const fox = new Float32Array(FCOUNT), foz = new Float32Array(FCOUNT);
-  const fvy = new Float32Array(FCOUNT), fdx = new Float32Array(FCOUNT), fdz = new Float32Array(FCOUNT);
-  const flife = new Float32Array(FCOUNT), fphase = new Float32Array(FCOUNT);
-  const firePos = new Float32Array(FCOUNT * 3);
-  const fireCol = new Float32Array(FCOUNT * 3);
-  const fireY0 = topY4 + 0.2;
-  for (let n = 0; n < FCOUNT; n++) {
+  const SCOUNT = 46;
+  const sox = new Float32Array(SCOUNT), soz = new Float32Array(SCOUNT);
+  const svy = new Float32Array(SCOUNT), sdx = new Float32Array(SCOUNT), sdz = new Float32Array(SCOUNT);
+  const slife = new Float32Array(SCOUNT), sphase = new Float32Array(SCOUNT);
+  const smokePos = new Float32Array(SCOUNT * 3);
+  const smokeCol = new Float32Array(SCOUNT * 3);
+  const smokeY0 = fireY0 + 5;
+  for (let n = 0; n < SCOUNT; n++) {
     const a = Math.random() * Math.PI * 2;
-    const rr = Math.pow(Math.random(), 0.7) * 2.2; // biased toward the centre → denser core
-    fox[n] = Math.cos(a) * rr;
-    foz[n] = Math.sin(a) * rr;
-    fvy[n] = 6.5 + Math.random() * 4.5;
-    fdx[n] = (Math.random() - 0.5) * 1.4;
-    fdz[n] = (Math.random() - 0.5) * 1.4;
-    flife[n] = 0.7 + Math.random() * 0.7;
-    fphase[n] = Math.random() * flife[n];
+    const rr = Math.random() * 1.6;
+    sox[n] = Math.cos(a) * rr;
+    soz[n] = Math.sin(a) * rr;
+    svy[n] = 3 + Math.random() * 2;
+    sdx[n] = (Math.random() - 0.5) * 2.2;
+    sdz[n] = (Math.random() - 0.5) * 2.2;
+    slife[n] = 2.5 + Math.random() * 1.8;
+    sphase[n] = Math.random() * slife[n];
   }
-  const fireAlpha = new Float32Array(FCOUNT);
-  const fireGeo = new THREE.BufferGeometry();
-  fireGeo.setAttribute("position", new THREE.BufferAttribute(firePos, 3));
-  fireGeo.setAttribute("color", new THREE.BufferAttribute(fireCol, 3));
-  fireGeo.setAttribute("aOpacity", new THREE.BufferAttribute(fireAlpha, 1));
-  // custom point shader: each ember has its OWN alpha, so it fades to fully
-  // transparent while staying saturated — no whitening on the light background.
-  const fireMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uMap: { value: fireSprite },
-      uSize: { value: 1.25 },
-      uScale: { value: 500 }, // 0.5 * drawing-buffer height (set each frame)
-      uGlobal: { value: 1 },  // overall intensity (rest interludes)
-    },
-    transparent: true,
-    depthWrite: false,
-    vertexShader: `
-      attribute vec3 color;
-      attribute float aOpacity;
-      uniform float uSize;
-      uniform float uScale;
-      varying vec3 vColor;
-      varying float vOpacity;
-      void main() {
-        vColor = color;
-        vOpacity = aOpacity;
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = uSize * (uScale / -mv.z);
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D uMap;
-      uniform float uGlobal;
-      varying vec3 vColor;
-      varying float vOpacity;
-      void main() {
-        float a = texture2D(uMap, gl_PointCoord).a * vOpacity * uGlobal;
-        if (a < 0.01) discard;
-        gl_FragColor = vec4(vColor, a);
-      }
-    `,
-  });
-  const fire = new THREE.Points(fireGeo, fireMat);
-  group.add(fire);
-
-  // flickering fire height/pressure
-  const fireScale = (t: number) => 0.55 + 0.3 * Math.sin(t * 1.7) + 0.15 * Math.sin(t * 5.3);
+  const smokeGeo = new THREE.BufferGeometry();
+  smokeGeo.setAttribute("position", new THREE.BufferAttribute(smokePos, 3));
+  smokeGeo.setAttribute("color", new THREE.BufferAttribute(smokeCol, 3));
+  const smoke = new THREE.Points(
+    smokeGeo,
+    new THREE.PointsMaterial({
+      size: 3, map: smokeSprite, vertexColors: true, transparent: true,
+      opacity: 0, depthWrite: false, sizeAttenuation: true,
+    }),
+  );
+  group.add(smoke);
 
   // ---- feature state + music ----
   let fireOn = true;
@@ -481,7 +459,7 @@ export function createFountain(
     ],
     dispose: () => {
       music.stop();
-      fireSprite.dispose(); // shader-uniform texture isn't freed by the generic disposer
+      (fire.material as THREE.ShaderMaterial).uniforms.fireTex.value?.dispose(); // free the LUT
       if (crispPool) (pool as Reflector).dispose(); // free the planar render target
       cubeRT.dispose(); // free the cube render target
     },
@@ -562,25 +540,32 @@ export function createFountain(
       // flickers with its own changing "pressure"
       fire.visible = fireLvl > 0.001;
       if (fire.visible) {
-        fireMat.uniforms.uGlobal.value = Math.min(1, fireLvl * 1.5);
-        if (env) fireMat.uniforms.uScale.value = env.renderer.domElement.height * 0.5;
-        const fs = fireScale(time) * fireLvl; // intensity lowers the flames to nothing
-        for (let n = 0; n < FCOUNT; n++) {
-          const tt = (time + fphase[n]) % flife[n];
-          const f = tt / flife[n];
-          firePos[n * 3] = fox[n] * (1 - 0.55 * f) + fdx[n] * tt; // taper inward as it rises
-          firePos[n * 3 + 1] = fireY0 + fvy[n] * fs * tt;
-          firePos[n * 3 + 2] = foz[n] * (1 - 0.55 * f) + fdz[n] * tt;
-          // saturated hot palette held all the way up: orange core → deep red
-          fireCol[n * 3] = 1.0;
-          fireCol[n * 3 + 1] = Math.max(0.05, 0.5 - 0.45 * f);
-          fireCol[n * 3 + 2] = Math.max(0, 0.12 - 0.22 * f);
-          // own alpha: quick fade-in, fade out toward the top so embers vanish
-          fireAlpha[n] = Math.min(1, (1 - f) * 1.4) * 0.9;
+        // flicker the flame height a little, and keep its base pinned to the
+        // top ring as the height changes
+        const hScale = 0.85 + 0.3 * (fireScale(time) - 0.55);
+        fire.scale.set(FIRE_W, FIRE_H * hScale, FIRE_W);
+        fire.position.y = fireY0 + (FIRE_H * hScale) / 2;
+        fire.updateFire(time, Math.min(1, fireLvl * 1.5));
+      }
+
+      // smoke: only where fire AND water are both present (steam)
+      const smokeAmt = Math.min(fireLvl, waterLvl);
+      smoke.visible = smokeAmt > 0.01;
+      if (smoke.visible) {
+        (smoke.material as THREE.PointsMaterial).opacity = 0.26 * smokeAmt;
+        for (let n = 0; n < SCOUNT; n++) {
+          const tt = (time + sphase[n]) % slife[n];
+          const f = tt / slife[n];
+          smokePos[n * 3] = sox[n] + sdx[n] * tt; // drift outward as it rises
+          smokePos[n * 3 + 1] = smokeY0 + svy[n] * tt;
+          smokePos[n * 3 + 2] = soz[n] + sdz[n] * tt;
+          const grey = 0.5 + 0.3 * f; // darker puff → dissipates into the bg grey
+          smokeCol[n * 3] = grey;
+          smokeCol[n * 3 + 1] = grey;
+          smokeCol[n * 3 + 2] = grey;
         }
-        fireGeo.attributes.position.needsUpdate = true;
-        fireGeo.attributes.color.needsUpdate = true;
-        fireGeo.attributes.aOpacity.needsUpdate = true;
+        smokeGeo.attributes.position.needsUpdate = true;
+        smokeGeo.attributes.color.needsUpdate = true;
       }
     },
   };

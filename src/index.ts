@@ -383,10 +383,10 @@ if (AUTO) {
     if (r < 0.20) {
       // push-in: glide in close on the rings so a composition resolves
       el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11);
-    } else if (r < 0.38) {
-      // aerial: look down on the cog rings + the circular pool (not flat-on top)
-      el = rand(52 * DEG, 78 * DEG); dist = rand(80, 118); lookY = rand(-3, 1); dur = rand(10, 16);
-    } else if (r < 0.66) {
+    } else if (r < 0.34) {
+      // aerial: look down on the cog rings + pool — visit, but don't dwell
+      el = rand(52 * DEG, 78 * DEG); dist = rand(80, 118); lookY = rand(-3, 1); dur = rand(6, 9);
+    } else if (r < 0.64) {
       // low / from-below: drop under the bottom ring and look up the tower
       el = rand(-22 * DEG, 2 * DEG); dist = rand(54, 76); lookY = rand(2, 10); dur = rand(11, 17);
     } else {
