@@ -430,7 +430,7 @@ if (AUTO) {
     const len = Math.max(1, p.length());
     orbit.az = Math.atan2(p.z, p.x);
     orbit.el = Math.asin(Math.max(-1, Math.min(1, p.y / len)));
-    orbit.dist = Math.min(Math.max(len, DIST[0]), DIST[1]);
+    orbit.dist = len; // seed at the ACTUAL distance so resume eases in (no snap)
     orbit.lookY = controls.target.y || 2;
     orbit.roll = 0;
     from = { ...orbit };
