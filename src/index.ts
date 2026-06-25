@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Creation } from "./creation";
 import { createAgamograph } from "./creations/agamograph";
 import { createFountain, rollFountainModes, type FountainModes } from "./creations/fountain";
@@ -35,11 +35,17 @@ if (!AUTO) {
   });
 }
 
-// TrackballControls: free tumble (no pole "stuck" point); 1 finger rotates,
-// two fingers zoom/pan.
-const controls = new TrackballControls(camera, renderer.domElement);
-controls.dynamicDampingFactor = 0.12;
-controls.rotateSpeed = 2.2;
+// OrbitControls: stays upright (no roll, polar angle clamped), so the camera
+// can't tumble into orientations the auto-glide can't represent — which makes
+// resuming the glide smooth by construction. 1 finger orbits, pinch zooms.
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false; // keep the orbit centred (clean glide handoff)
+controls.minPolarAngle = 0.18; // ~10° from top (matches the glide's aerial)
+controls.maxPolarAngle = 1.95; // ~112°: can look up from below, but not under the pool
+controls.minDistance = 32;
+controls.maxDistance = 320;
 controls.enabled = !AUTO; // kiosk mode is a locked display — ignore all input
 
 // disable double-click / double-tap to zoom
