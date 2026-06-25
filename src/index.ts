@@ -94,6 +94,27 @@ function iconBtn(name: string, label: string): HTMLButtonElement {
     "border:none;background:none;cursor:pointer;padding:5px;display:inline-flex;line-height:0;";
   return b;
 }
+// a button showing an image (the colour fountain SVG); active = full colour,
+// inactive = grayscale + dimmed (since a colour image can't use currentColor).
+function imgBtn(src: string, label: string): HTMLButtonElement {
+  const b = document.createElement("button");
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = label;
+  img.width = 23;
+  img.height = 23;
+  img.style.display = "block";
+  b.appendChild(img);
+  b.title = label;
+  b.setAttribute("aria-label", label);
+  b.style.cssText =
+    "border:none;background:none;cursor:pointer;padding:3px;display:inline-flex;line-height:0;";
+  return b;
+}
+function styleImgBtn(b: HTMLButtonElement, on: boolean) {
+  (b.firstElementChild as HTMLElement).style.filter = on ? "none" : "grayscale(1)";
+  b.style.opacity = on ? "1" : ".5";
+}
 // Homage / attribution credit, shared by kiosk mode (inside the frame) and
 // regular mode (fixed bottom-right). Caller sets position.
 function makeCredit(): HTMLAnchorElement {
@@ -169,8 +190,15 @@ const TOGGLE_ICONS: Record<string, string> = { fire: "flame", water: "droplets",
 function buildUI(name: string) {
   bar.replaceChildren();
   for (const sel of ["surface", "fountain"]) {
-    const b = iconBtn(sel === "surface" ? "grid" : "fountain", sel);
-    styleIcon(b, sel === name);
+    const active = sel === name;
+    let b: HTMLButtonElement;
+    if (sel === "fountain") {
+      b = imgBtn("favicon.svg", sel); // the colourful fountain icon
+      styleImgBtn(b, active);
+    } else {
+      b = iconBtn("grid", sel);
+      styleIcon(b, active);
+    }
     // clicking the current creation re-rolls patterns+colors but keeps the modes
     // & camera (soft); clicking the other one switches (full render).
     b.onclick = () => setCreation(sel, sel === currentName);

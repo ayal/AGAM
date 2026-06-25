@@ -35,7 +35,10 @@ export function createFountain(
   const gap = 0.3;
   const totalH = HEIGHTS.reduce((a, b) => a + b, 0) + gap * (TIERS - 1);
   const amp = 0.9;
-  const pleatW = 1.9;
+  // Ribs are ~60° equilateral triangles (horizontal cross-section), identical on
+  // every ring: the peak-to-valley depth is the triangle's altitude (= 2*amp),
+  // so its side = 2*amp / sin60°.
+  const ribSide = (2 * amp) / Math.sin(Math.PI / 3);
   // Sometimes the WHOLE fountain is black & white (never just one ring). Rolled
   // every build (it's a colour decision), so re-clicks can move in/out of B&W.
   const monoRender = forceColor ? false : Math.random() < 0.25;
@@ -200,7 +203,10 @@ export function createFountain(
     const mono = monoRender;
     const Rout = R + amp;
     const Rin = R - amp;
-    const P = Math.max(16, Math.round((2 * Math.PI * R) / pleatW));
+    // pick the pleat count so each rib's base chord ≈ ribSide → ~60° apex, so
+    // the same equilateral rib repeats on every ring (rounding to a whole rib
+    // count leaves only a tiny per-ring deviation).
+    const P = Math.max(8, Math.round(Math.PI / Math.asin(Math.min(0.99, ribSide / (2 * Rin)))));
     const N = 2 * P;
     const rows = Math.max(5, Math.round(h * 1.4));
 
