@@ -368,7 +368,25 @@ export function createFountain(
   };
 
   // ---- fire at the center top (the "Fire" of Fire & Water) ----
-  const FCOUNT = 240;
+  // Many small SOFT round sprites (radial-gradient texture, no chunky squares)
+  // rising turbulently from a tight base, tapering inward, and fading from a
+  // hot yellow core through orange to the BACKGROUND colour so the tips simply
+  // dissolve (the old ramp faded to a pale grey, which read as white blobs).
+  const fireSprite = (() => {
+    const s = 64;
+    const c = document.createElement("canvas");
+    c.width = c.height = s;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.3, "rgba(255,255,255,0.6)");
+    g.addColorStop(0.6, "rgba(255,255,255,0.18)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+    return new THREE.CanvasTexture(c);
+  })();
+  const FCOUNT = 520;
   const fox = new Float32Array(FCOUNT), foz = new Float32Array(FCOUNT);
   const fvy = new Float32Array(FCOUNT), fdx = new Float32Array(FCOUNT), fdz = new Float32Array(FCOUNT);
   const flife = new Float32Array(FCOUNT), fphase = new Float32Array(FCOUNT);
@@ -377,25 +395,59 @@ export function createFountain(
   const fireY0 = topY4 + 0.2;
   for (let n = 0; n < FCOUNT; n++) {
     const a = Math.random() * Math.PI * 2;
-    const rr = Math.random() * 2.0;
+    const rr = Math.pow(Math.random(), 0.7) * 2.2; // biased toward the centre → denser core
     fox[n] = Math.cos(a) * rr;
     foz[n] = Math.sin(a) * rr;
-    fvy[n] = 5 + Math.random() * 3.5;
-    fdx[n] = (Math.random() - 0.5) * 1.2;
-    fdz[n] = (Math.random() - 0.5) * 1.2;
-    flife[n] = 0.9 + Math.random() * 0.7;
+    fvy[n] = 6.5 + Math.random() * 4.5;
+    fdx[n] = (Math.random() - 0.5) * 1.4;
+    fdz[n] = (Math.random() - 0.5) * 1.4;
+    flife[n] = 0.7 + Math.random() * 0.7;
     fphase[n] = Math.random() * flife[n];
   }
+  const fireAlpha = new Float32Array(FCOUNT);
   const fireGeo = new THREE.BufferGeometry();
   fireGeo.setAttribute("position", new THREE.BufferAttribute(firePos, 3));
   fireGeo.setAttribute("color", new THREE.BufferAttribute(fireCol, 3));
-  const fire = new THREE.Points(
-    fireGeo,
-    new THREE.PointsMaterial({
-      size: 1.7, vertexColors: true, transparent: true, opacity: 0.92,
-      depthWrite: false, sizeAttenuation: true,
-    }),
-  );
+  fireGeo.setAttribute("aOpacity", new THREE.BufferAttribute(fireAlpha, 1));
+  // custom point shader: each ember has its OWN alpha, so it fades to fully
+  // transparent while staying saturated — no whitening on the light background.
+  const fireMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: fireSprite },
+      uSize: { value: 1.25 },
+      uScale: { value: 500 }, // 0.5 * drawing-buffer height (set each frame)
+      uGlobal: { value: 1 },  // overall intensity (rest interludes)
+    },
+    transparent: true,
+    depthWrite: false,
+    vertexShader: `
+      attribute vec3 color;
+      attribute float aOpacity;
+      uniform float uSize;
+      uniform float uScale;
+      varying vec3 vColor;
+      varying float vOpacity;
+      void main() {
+        vColor = color;
+        vOpacity = aOpacity;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = uSize * (uScale / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uMap;
+      uniform float uGlobal;
+      varying vec3 vColor;
+      varying float vOpacity;
+      void main() {
+        float a = texture2D(uMap, gl_PointCoord).a * vOpacity * uGlobal;
+        if (a < 0.01) discard;
+        gl_FragColor = vec4(vColor, a);
+      }
+    `,
+  });
+  const fire = new THREE.Points(fireGeo, fireMat);
   group.add(fire);
 
   // flickering fire height/pressure
@@ -429,6 +481,7 @@ export function createFountain(
     ],
     dispose: () => {
       music.stop();
+      fireSprite.dispose(); // shader-uniform texture isn't freed by the generic disposer
       if (crispPool) (pool as Reflector).dispose(); // free the planar render target
       cubeRT.dispose(); // free the cube render target
     },
@@ -509,22 +562,25 @@ export function createFountain(
       // flickers with its own changing "pressure"
       fire.visible = fireLvl > 0.001;
       if (fire.visible) {
-        (fire.material as THREE.PointsMaterial).opacity = 0.92 * Math.min(1, fireLvl * 1.5);
+        fireMat.uniforms.uGlobal.value = Math.min(1, fireLvl * 1.5);
+        if (env) fireMat.uniforms.uScale.value = env.renderer.domElement.height * 0.5;
         const fs = fireScale(time) * fireLvl; // intensity lowers the flames to nothing
         for (let n = 0; n < FCOUNT; n++) {
           const tt = (time + fphase[n]) % flife[n];
           const f = tt / flife[n];
-          firePos[n * 3] = fox[n] * (1 - 0.4 * f) + fdx[n] * tt;
+          firePos[n * 3] = fox[n] * (1 - 0.55 * f) + fdx[n] * tt; // taper inward as it rises
           firePos[n * 3 + 1] = fireY0 + fvy[n] * fs * tt;
-          firePos[n * 3 + 2] = foz[n] * (1 - 0.4 * f) + fdz[n] * tt;
-          const gg = Math.max(0, 0.5 - 0.46 * f);
-          const fade = f * f;
-          fireCol[n * 3] = 1.0 * (1 - fade) + 0.957 * fade;
-          fireCol[n * 3 + 1] = gg * (1 - fade) + 0.945 * fade;
-          fireCol[n * 3 + 2] = 0.0 * (1 - fade) + 0.91 * fade;
+          firePos[n * 3 + 2] = foz[n] * (1 - 0.55 * f) + fdz[n] * tt;
+          // saturated hot palette held all the way up: orange core → deep red
+          fireCol[n * 3] = 1.0;
+          fireCol[n * 3 + 1] = Math.max(0.05, 0.5 - 0.45 * f);
+          fireCol[n * 3 + 2] = Math.max(0, 0.12 - 0.22 * f);
+          // own alpha: quick fade-in, fade out toward the top so embers vanish
+          fireAlpha[n] = Math.min(1, (1 - f) * 1.4) * 0.9;
         }
         fireGeo.attributes.position.needsUpdate = true;
         fireGeo.attributes.color.needsUpdate = true;
+        fireGeo.attributes.aOpacity.needsUpdate = true;
       }
     },
   };
