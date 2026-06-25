@@ -437,21 +437,8 @@ if (AUTO) {
   let nextSoft = rand(30, 45); // frequent recolour + new patterns (keeps camera)
   let nextFull = rand(180, 300); // rarer full mode change (pool style / B&W)
 
-  // Occasionally cut the water or fire for a short beat, then bring it back —
-  // like a fountain catching its breath. Toggled via the current creation's own
-  // fire/water setters (a rebuild resets them to on, which is fine).
-  const setFeature = (label: string, on: boolean) =>
-    current?.toggles?.find((t) => t.label === label)?.set(on);
-  type Interlude = { offUntil: number; next: number };
-  const fireBeat: Interlude = { offUntil: 0, next: rand(28, 60) };
-  const waterBeat: Interlude = { offUntil: 0, next: rand(35, 70) };
-  const runInterlude = (label: string, b: Interlude, now: number, offMin: number, offMax: number, gapMin: number, gapMax: number) => {
-    if (b.offUntil) {
-      if (now >= b.offUntil) { setFeature(label, true); b.offUntil = 0; b.next = now + rand(gapMin, gapMax); }
-    } else if (now >= b.next) {
-      setFeature(label, false); b.offUntil = now + rand(offMin, offMax);
-    }
-  };
+  // (The periodic water/fire "rest" interludes now live in the fountain's own
+  // update, so they run in every mode — not just kiosk.)
 
   autoTick = (now: number) => {
     // camera glide
@@ -484,10 +471,6 @@ if (AUTO) {
       crossfade(() => setCreation("fountain", true));
       nextSoft = now + rand(30, 45);
     }
-
-    // brief water / fire interludes (water rests a touch longer than fire)
-    runInterlude("water", waterBeat, now, 5, 10, 35, 70);
-    runInterlude("fire", fireBeat, now, 4, 8, 28, 60);
   };
 
   // ---- self-update / hardening for an unattended multi-day run ------------

@@ -409,6 +409,12 @@ export function createFountain(
   let fireLvl = 1;
   let waterLvl = 1;
   let lastT = 0;
+  // periodic "rest" interludes: fire/water briefly fade to zero then return —
+  // in EVERY mode, not just kiosk. Respects the toggles: a feature toggled off
+  // stays off; a rest only dips one that's currently on.
+  let waterRestUntil = 0, waterRestNext = 0;
+  let fireRestUntil = 0, fireRestNext = 0;
+  let restInit = false;
   const music = createMusic();
 
   return {
@@ -456,15 +462,26 @@ export function createFountain(
         for (const w of waterMeshes) w.visible = true;
       }
 
-      // ease fire/water intensity toward their on/off targets (no abrupt cut)
+      // schedule the periodic rests (water rests a touch longer than fire)
+      if (!restInit) {
+        waterRestNext = time + 35 + Math.random() * 35;
+        fireRestNext = time + 28 + Math.random() * 32;
+        restInit = true;
+      }
+      if (waterRestUntil) { if (time >= waterRestUntil) { waterRestUntil = 0; waterRestNext = time + 35 + Math.random() * 35; } }
+      else if (time >= waterRestNext) waterRestUntil = time + 5 + Math.random() * 5;
+      if (fireRestUntil) { if (time >= fireRestUntil) { fireRestUntil = 0; fireRestNext = time + 28 + Math.random() * 32; } }
+      else if (time >= fireRestNext) fireRestUntil = time + 4 + Math.random() * 4;
+
+      // ease fire/water intensity toward target (toggle AND not currently resting)
       const RAMP = 1.3; // seconds for a full fade in/out
       const approach = (lvl: number, on: boolean) => {
         const step = dt / RAMP;
         const target = on ? 1 : 0;
         return lvl < target ? Math.min(target, lvl + step) : Math.max(target, lvl - step);
       };
-      waterLvl = approach(waterLvl, waterOn);
-      fireLvl = approach(fireLvl, fireOn);
+      waterLvl = approach(waterLvl, waterOn && !waterRestUntil);
+      fireLvl = approach(fireLvl, fireOn && !fireRestUntil);
 
       // water jets
       jets.visible = waterLvl > 0.001;
