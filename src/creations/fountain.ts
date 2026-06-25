@@ -307,21 +307,31 @@ export function createFountain(
     const R = RADII[ri] + amp;
     const topY = tierY[ri] + HEIGHTS[ri] / 2;
     const nEmit = Math.max(12, Math.round((2 * Math.PI * R) / 3));
+    const PER_JET = 26; // tightly-packed droplets per stream → reads continuous
     for (let e = 0; e < nEmit; e++) {
       const th = (e / nEmit) * Math.PI * 2;
       const cx = Math.cos(th), cz = Math.sin(th);
-      for (let k = 0; k < 6; k++) {
-        const life = 1.5 + Math.random() * 0.3;
-        drops.push({ ox: R * cx, oy: topY, oz: R * cz, cx, cz, ph: (k / 6) * life + Math.random() * 0.1, life, up: 7 + Math.random() * 2, out: 4 + Math.random() * 1.5, grp: g });
+      // one launch velocity shared by the whole stream so the droplets trace a
+      // single coherent arc (not a scattered cloud); they just differ in phase.
+      const life = 1.5 + Math.random() * 0.3;
+      const up = 7 + Math.random() * 2;
+      const out = 4 + Math.random() * 1.5;
+      for (let k = 0; k < PER_JET; k++) {
+        drops.push({ ox: R * cx, oy: topY, oz: R * cz, cx, cz, ph: (k / PER_JET) * life, life, up, out, grp: g });
       }
     }
   });
-  // center jet on the topmost ring (group 3): tall, near-vertical
+  // center jet on the topmost ring (group 3): a few tall near-vertical streams
   const topY4 = tierY[TIERS - 1] + HEIGHTS[TIERS - 1] / 2;
-  for (let k = 0; k < 140; k++) {
-    const az = Math.random() * Math.PI * 2;
+  const CENTER_STREAMS = 10;
+  for (let s = 0; s < CENTER_STREAMS; s++) {
+    const az = (s / CENTER_STREAMS) * Math.PI * 2 + Math.random() * 0.3;
     const life = 2.0 + Math.random() * 0.6;
-    drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: Math.random() * life, life, up: 20 + Math.random() * 3, out: 1.4 + Math.random() * 1.4, grp: 3 });
+    const up = 20 + Math.random() * 3;
+    const out = 1.4 + Math.random() * 1.4;
+    for (let k = 0; k < 34; k++) {
+      drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: (k / 34) * life, life, up, out, grp: 3 });
+    }
   }
   const COUNT = drops.length;
   const positions = new Float32Array(COUNT * 3);
@@ -329,7 +339,7 @@ export function createFountain(
   jetGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   const jets = new THREE.Points(
     jetGeo,
-    new THREE.PointsMaterial({ color: 0x3f9ad6, size: 0.55, transparent: true, opacity: 0.95, depthWrite: false }),
+    new THREE.PointsMaterial({ color: 0x3f9ad6, size: 0.6, transparent: true, opacity: 0.95, depthWrite: false }),
   );
   group.add(jets);
 
