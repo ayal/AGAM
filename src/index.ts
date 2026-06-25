@@ -166,7 +166,11 @@ function makeToggle(icon: string, label: string, initial: boolean, onChange: (on
 let current: Creation | null = null;
 let currentName = "";
 let autoRotate = true;
-let autoTick: ((t: number) => void) | null = null; // kiosk per-frame driver (?auto)
+let autoTick: ((t: number) => void) | null = null; // per-frame camera glide (attract loop)
+let isManual = false; // regular mode: user has grabbed camera control
+let seedGlide: (() => void) | null = null; // (re)seed the glide orbit from the live camera
+let checkIdle: ((t: number) => void) | null = null; // regular mode: resume glide after idle
+let frameEl: HTMLElement | null = null; // kiosk presentation frame (null in regular mode)
 let spinBtn: (HTMLButtonElement & { setOn?: (v: boolean) => void }) | null = null;
 let fountainModes: FountainModes = THUMB ? { crisp: true } : rollFountainModes(); // kept on recolor, re-rolled on full render
 
@@ -261,10 +265,13 @@ function setCreation(name: string, soft = false, keepCamera = false) {
   }
   currentName = name;
   buildUI(name);
+  // if the fountain will be auto-gliding, (re)seed the glide from this view
+  if (!soft && !THUMB && !isManual && name === "fountain") seedGlide?.();
 }
 
 // fresh load always starts on the fountain
 setCreation("fountain");
+const clock = new THREE.Clock();
 
 // ---------------------------------------------------------------------------
 // Auto / kiosk mode (?auto): an unattended big-screen attract loop.
@@ -313,6 +320,7 @@ if (AUTO) {
   frame.appendChild(credit);
   surround.appendChild(frame);
   document.body.appendChild(surround);
+  frameEl = frame; // the shared glide loop fades re-renders inside this frame
 
   camera.fov = 52; // a tighter vertical FOV fills the short, wide frame
 
@@ -342,137 +350,6 @@ if (AUTO) {
   };
   frameLayout();
   window.addEventListener("resize", frameLayout);
-
-  const DEG = Math.PI / 180;
-  // The pool disc reaches ~r23 and the tower ~r17, so the closest distance stays
-  // well outside the geometry. Elevation never dips under the pool nor looks
-  // perfectly straight down (which would read flat).
-  const DIST = [58, 122] as const;
-  const LOOKY = [-1, 5] as const;
-
-  // continuous orbit state (az is NOT wrapped, so legs can sweep either way and
-  // sometimes past a full turn). Seed from the fountain's default view.
-  const d0 = new THREE.Vector3(...current!.camera);
-  const orbit = {
-    az: Math.atan2(d0.z, d0.x),
-    el: Math.asin(d0.y / d0.length()),
-    dist: Math.min(Math.max(d0.length(), DIST[0]), DIST[1]), // seed within orbit range
-    lookY: 2,
-    roll: 0, // camera roll (Dutch tilt) about the view axis
-  };
-  let from = { ...orbit };
-  let to = { ...orbit };
-  let legStart = 0;
-  let legDur = 0.001; // first frame: instantly "arrive" and pick a real leg
-  let holdUntil = 0;
-  let holding = true;
-
-  // A small repertoire of shot types (picked by weight) keeps the motion varied
-  // and intentional rather than aimless drift. az always sweeps to a new angle.
-  // never let the camera drop below the water (pool sits at ~y -11); sitting
-  // this low lets it get under the bottom ring and look up at the tower
-  const Y_FLOOR = -10;
-  const pickLeg = (now: number) => {
-    from = { ...orbit };
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    // sometimes take the long way around — more than a full turn, slowed down
-    const big = Math.random() < 0.25;
-    const az = orbit.az + dir * (big ? rand(320 * DEG, 520 * DEG) : rand(60 * DEG, 220 * DEG));
-    const r = Math.random();
-    let el: number, dist: number, lookY: number, dur: number;
-    if (r < 0.12) {
-      // push-in: glide in close on the rings so a composition resolves
-      el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11);
-    } else if (r < 0.32) {
-      // aerial / rise-above: swing up for a look down the tower (20% of legs)
-      el = rand(48 * DEG, 76 * DEG); dist = rand(78, 116); lookY = rand(-3, 2); dur = rand(7, 11);
-    } else if (r < 0.72) {
-      // low / from-below (person height): the dominant view — stand at the
-      // fountain and look up the tower. Longest legs, so it owns the most time.
-      el = rand(-18 * DEG, 6 * DEG); dist = rand(54, 78); lookY = rand(3, 11); dur = rand(11, 17);
-    } else {
-      // mid orbit: the everyday three-quarter view
-      el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 14);
-    }
-    // clamp the downward angle so the camera can't dip below the pool surface
-    el = Math.max(el, Math.asin(Y_FLOOR / dist));
-    if (big) dur = Math.max(dur, rand(20, 30)); // keep the grand orbit calm
-    // occasionally lean the horizon (Dutch tilt); usually upright
-    const roll = Math.random() < 0.3 ? (Math.random() < 0.5 ? 1 : -1) * rand(7 * DEG, 18 * DEG) : 0;
-    to = { az, el, dist, lookY, roll };
-    legStart = now;
-    legDur = dur;
-    holding = false;
-  };
-
-  const applyOrbit = () => {
-    const ce = Math.cos(orbit.el);
-    camera.up.set(0, 1, 0);
-    camera.position.set(
-      orbit.dist * ce * Math.cos(orbit.az),
-      orbit.dist * Math.sin(orbit.el),
-      orbit.dist * ce * Math.sin(orbit.az),
-    );
-    camera.lookAt(0, orbit.lookY, 0);
-    if (orbit.roll) camera.rotateZ(orbit.roll); // lean about the view axis
-  };
-
-  // self-triggered re-renders, hidden behind a cross-fade through the bg colour.
-  const fader = document.createElement("div");
-  fader.style.cssText =
-    "position:absolute;inset:0;background:#ccced0;opacity:0;pointer-events:none;" +
-    "z-index:2;transition:opacity 280ms ease;"; // below the border/title (z3)
-  frame.appendChild(fader);
-  let swapping = false;
-  const crossfade = (swap: () => void) => {
-    if (swapping) return;
-    swapping = true;
-    fader.style.opacity = "1";
-    setTimeout(() => {
-      swap();
-      fader.style.opacity = "0";
-      setTimeout(() => { swapping = false; }, 300);
-    }, 300);
-  };
-
-  let nextSoft = rand(30, 45); // frequent recolour + new patterns (keeps camera)
-  let nextFull = rand(180, 300); // rarer full mode change (pool style / B&W)
-
-  // (The periodic water/fire "rest" interludes now live in the fountain's own
-  // update, so they run in every mode — not just kiosk.)
-
-  autoTick = (now: number) => {
-    // camera glide
-    if (now >= legStart + legDur) {
-      if (!holding) { orbit.az = to.az; orbit.el = to.el; orbit.dist = to.dist; orbit.lookY = to.lookY; orbit.roll = to.roll; holding = true; holdUntil = now + rand(1.5, 3); }
-      else if (now >= holdUntil) pickLeg(now);
-    } else {
-      const t = smooth((now - legStart) / legDur);
-      orbit.az = lerpN(from.az, to.az, t);
-      orbit.el = lerpN(from.el, to.el, t);
-      orbit.dist = lerpN(from.dist, to.dist, t);
-      orbit.lookY = lerpN(from.lookY, to.lookY, t);
-      orbit.roll = lerpN(from.roll, to.roll, t);
-    }
-    applyOrbit();
-
-    // self re-render. The periodic "full" change ALTERNATES the pool's
-    // reflection type (planar mirror <-> soft cube-map water) so the look keeps
-    // visibly changing rather than risking the same roll twice; the frequent
-    // "soft" change just re-rolls colours + patterns. Both keep the camera glide
-    // going (soft render preserves modes + camera).
-    if (now >= nextFull) {
-      // reflection-type switching is disabled for now (cube-map hides the
-      // fire); re-enable by flipping crisp here once that's fixed. Until then
-      // this is just a slower full re-roll alongside the frequent soft one.
-      crossfade(() => setCreation("fountain", true));
-      nextFull = now + rand(180, 300);
-      nextSoft = now + rand(30, 45);
-    } else if (now >= nextSoft) {
-      crossfade(() => setCreation("fountain", true));
-      nextSoft = now + rand(30, 45);
-    }
-  };
 
   // ---- self-update / hardening for an unattended multi-day run ------------
   // A graceful reload: fade the whole screen to the backdrop colour, then
@@ -525,15 +402,167 @@ if (AUTO) {
 }
 
 // ---------------------------------------------------------------------------
+// Camera glide (attract loop) — runs in BOTH modes, governs the fountain only.
+//   • kiosk (?auto): always on, input locked.
+//   • regular: glides on its own until the user grabs the camera (drag / zoom),
+//     then hands over manual control; after an idle pause it resumes the glide.
+// ---------------------------------------------------------------------------
+{
+  const DEG = Math.PI / 180;
+  // The pool disc reaches ~r23 and the tower ~r17, so the closest distance stays
+  // well outside the geometry. Elevation never dips under the pool nor looks
+  // perfectly straight down (which would read flat).
+  const DIST = [58, 122] as const;
+  const LOOKY = [-1, 5] as const;
+  const Y_FLOOR = -10; // keep the camera above the pool (~y -11)
+
+  const orbit = { az: 0, el: 0.3, dist: 100, lookY: 2, roll: 0 };
+  let from = { ...orbit };
+  let to = { ...orbit };
+  let legStart = 0;
+  let legDur = 0.001;
+  let holdUntil = 0;
+  let holding = true;
+
+  // (re)seed the orbit from wherever the camera is now → smooth start / resume
+  seedGlide = () => {
+    const p = camera.position;
+    const len = Math.max(1, p.length());
+    orbit.az = Math.atan2(p.z, p.x);
+    orbit.el = Math.asin(Math.max(-1, Math.min(1, p.y / len)));
+    orbit.dist = Math.min(Math.max(len, DIST[0]), DIST[1]);
+    orbit.lookY = controls.target.y || 2;
+    orbit.roll = 0;
+    from = { ...orbit };
+    to = { ...orbit };
+    holding = true;
+    holdUntil = 0; // pick a fresh leg on the next tick
+  };
+
+  // A small repertoire of shot types keeps the motion varied and intentional.
+  const pickLeg = (now: number) => {
+    from = { ...orbit };
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const big = Math.random() < 0.25; // sometimes the long way round (>1 turn)
+    const az = orbit.az + dir * (big ? rand(320 * DEG, 520 * DEG) : rand(60 * DEG, 220 * DEG));
+    const r = Math.random();
+    let el: number, dist: number, lookY: number, dur: number;
+    if (r < 0.12) {
+      el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11); // push-in
+    } else if (r < 0.32) {
+      el = rand(48 * DEG, 76 * DEG); dist = rand(78, 116); lookY = rand(-3, 2); dur = rand(7, 11); // rise-above
+    } else if (r < 0.72) {
+      el = rand(-18 * DEG, 6 * DEG); dist = rand(54, 78); lookY = rand(3, 11); dur = rand(11, 17); // from-below (dominant)
+    } else {
+      el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 14); // mid orbit
+    }
+    el = Math.max(el, Math.asin(Y_FLOOR / dist)); // never below the pool
+    if (big) dur = Math.max(dur, rand(20, 30));
+    const roll = Math.random() < 0.3 ? (Math.random() < 0.5 ? 1 : -1) * rand(7 * DEG, 18 * DEG) : 0;
+    to = { az, el, dist, lookY, roll };
+    legStart = now;
+    legDur = dur;
+    holding = false;
+  };
+
+  const applyOrbit = () => {
+    const ce = Math.cos(orbit.el);
+    camera.up.set(0, 1, 0);
+    camera.position.set(
+      orbit.dist * ce * Math.cos(orbit.az),
+      orbit.dist * Math.sin(orbit.el),
+      orbit.dist * ce * Math.sin(orbit.az),
+    );
+    camera.lookAt(0, orbit.lookY, 0);
+    if (orbit.roll) camera.rotateZ(orbit.roll);
+  };
+
+  // self-triggered re-renders, cross-faded through the bg colour. In kiosk the
+  // fade lives inside the frame (below the title); in regular mode it's a
+  // full-screen dip behind the toolbar.
+  const fader = document.createElement("div");
+  if (frameEl) {
+    fader.style.cssText =
+      "position:absolute;inset:0;background:#ccced0;opacity:0;pointer-events:none;z-index:2;transition:opacity 280ms ease;";
+    frameEl.appendChild(fader);
+  } else {
+    fader.style.cssText =
+      "position:fixed;inset:0;background:#ccced0;opacity:0;pointer-events:none;z-index:9998;transition:opacity 280ms ease;";
+    document.body.appendChild(fader);
+  }
+  let swapping = false;
+  const crossfade = (swap: () => void) => {
+    if (swapping) return;
+    swapping = true;
+    fader.style.opacity = "1";
+    setTimeout(() => {
+      swap();
+      fader.style.opacity = "0";
+      setTimeout(() => { swapping = false; }, 300);
+    }, 300);
+  };
+
+  let nextSoft = rand(30, 45); // frequent recolour + new patterns (keeps camera)
+  let nextFull = rand(180, 300); // rarer full re-roll
+
+  autoTick = (now: number) => {
+    if (now >= legStart + legDur) {
+      if (!holding) { orbit.az = to.az; orbit.el = to.el; orbit.dist = to.dist; orbit.lookY = to.lookY; orbit.roll = to.roll; holding = true; holdUntil = now + rand(1.5, 3); }
+      else if (now >= holdUntil) pickLeg(now);
+    } else {
+      const t = smooth((now - legStart) / legDur);
+      orbit.az = lerpN(from.az, to.az, t);
+      orbit.el = lerpN(from.el, to.el, t);
+      orbit.dist = lerpN(from.dist, to.dist, t);
+      orbit.lookY = lerpN(from.lookY, to.lookY, t);
+      orbit.roll = lerpN(from.roll, to.roll, t);
+    }
+    applyOrbit();
+
+    if (now >= nextFull) {
+      crossfade(() => setCreation("fountain", true));
+      nextFull = now + rand(180, 300);
+      nextSoft = now + rand(30, 45);
+    } else if (now >= nextSoft) {
+      crossfade(() => setCreation("fountain", true));
+      nextSoft = now + rand(30, 45);
+    }
+  };
+
+  if (!AUTO) {
+    // regular mode: hand the camera to the user on interaction, resume on idle.
+    // The idle countdown starts when a drag/zoom ENDS (not on hover), so a
+    // cursor merely resting over the canvas can't keep it from resuming.
+    const IDLE = 22; // seconds after the last interaction before the glide resumes
+    let lastInteract = 0;
+    let dragging = false;
+    const mark = () => { lastInteract = clock.getElapsedTime(); };
+    const startManual = () => { isManual = true; controls.target.set(0, orbit.lookY, 0); mark(); };
+    const el = renderer.domElement;
+    el.addEventListener("pointerdown", () => { dragging = true; startManual(); });
+    el.addEventListener("wheel", () => startManual(), { passive: true });
+    el.addEventListener("touchstart", () => { dragging = true; startManual(); }, { passive: true });
+    window.addEventListener("pointerup", () => { if (dragging) { dragging = false; mark(); } });
+    window.addEventListener("touchend", () => { if (dragging) { dragging = false; mark(); } });
+    checkIdle = (now: number) => { if (isManual && !dragging && now - lastInteract > IDLE) isManual = false; };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Render loop
 // ---------------------------------------------------------------------------
-const clock = new THREE.Clock();
+let wasGliding = false;
 const animate = () => {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
-  autoTick?.(t);
-  current?.update?.(t, autoRotate, { renderer, scene, spinGroup: !AUTO });
+  // glide only governs the fountain, and only when the user isn't in control
+  const gliding = !isManual && currentName === "fountain";
+  if (gliding && !wasGliding) seedGlide?.(); // entering the glide → seed from current view
+  if (gliding) autoTick?.(t);
+  else controls.update(); // manual control (or the agamograph "surface" view)
+  checkIdle?.(t);
+  current?.update?.(t, autoRotate, { renderer, scene, spinGroup: !gliding });
   renderer.render(scene, camera);
-  if (!AUTO) controls.update(); // controls would fight the kiosk camera
+  wasGliding = gliding;
 };
 animate();
