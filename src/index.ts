@@ -380,18 +380,19 @@ if (AUTO) {
     const az = orbit.az + dir * (big ? rand(320 * DEG, 520 * DEG) : rand(60 * DEG, 220 * DEG));
     const r = Math.random();
     let el: number, dist: number, lookY: number, dur: number;
-    if (r < 0.20) {
+    if (r < 0.12) {
       // push-in: glide in close on the rings so a composition resolves
       el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11);
-    } else if (r < 0.34) {
+    } else if (r < 0.22) {
       // aerial: look down on the cog rings + pool — visit, but don't dwell
       el = rand(52 * DEG, 78 * DEG); dist = rand(80, 118); lookY = rand(-3, 1); dur = rand(6, 9);
-    } else if (r < 0.64) {
-      // low / from-below: drop under the bottom ring and look up the tower
-      el = rand(-22 * DEG, 2 * DEG); dist = rand(54, 76); lookY = rand(2, 10); dur = rand(11, 17);
+    } else if (r < 0.74) {
+      // low / from-below (person height): the dominant view — stand at the
+      // fountain and look up the tower. Longest legs, so it owns the most time.
+      el = rand(-18 * DEG, 6 * DEG); dist = rand(54, 78); lookY = rand(3, 11); dur = rand(12, 19);
     } else {
       // mid orbit: the everyday three-quarter view
-      el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 16);
+      el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 14);
     }
     // clamp the downward angle so the camera can't dip below the pool surface
     el = Math.max(el, Math.asin(Y_FLOOR / dist));
