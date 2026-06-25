@@ -9,7 +9,9 @@ import { newScheme } from "./palette";
 // Shared scene / renderer / camera / controls
 // ---------------------------------------------------------------------------
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight);
+// 52° vertical FOV everywhere (kiosk used this already): a wide 75° exaggerated
+// near-field perspective, ballooning the pool's reflection in normal mode.
+const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight);
 
 // ?auto → unattended kiosk mode for a big screen: no UI, locked input, the
 // camera glides on its own, and the render re-rolls itself over time. (See the
@@ -354,7 +356,7 @@ if (AUTO) {
   const orbit = {
     az: Math.atan2(d0.z, d0.x),
     el: Math.asin(d0.y / d0.length()),
-    dist: d0.length(),
+    dist: Math.min(Math.max(d0.length(), DIST[0]), DIST[1]), // seed within orbit range
     lookY: 2,
     roll: 0, // camera roll (Dutch tilt) about the view axis
   };

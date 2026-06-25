@@ -405,7 +405,7 @@ export function createFountain(
     name: "Fountain",
     group,
     background,
-    camera: [72, 13, 72], // zoomed out (~0.5x), lower elevation = more front-facing
+    camera: [113, 20, 113], // pulled back to keep framing at 52° FOV (was [72,13,72]@75°)
     toggles: [
       { label: "fire", initial: true, set: (on) => { fireOn = on; } },
       { label: "water", initial: true, set: (on) => { waterOn = on; } },

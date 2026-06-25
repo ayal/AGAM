@@ -91,7 +91,7 @@ export function createAgamograph(): Creation {
   return {
     name: "Agamograph",
     group,
-    camera: [-30, 30, 0],
+    camera: [-47, 47, 0], // pulled back to keep framing at the shared 52° FOV
     update: (_t, autoRotate) => {
       if (autoRotate) group.rotation.y += 0.0003;
     },
