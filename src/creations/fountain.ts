@@ -327,11 +327,12 @@ export function createFountain(
   const CENTER_STREAMS = 10;
   for (let s = 0; s < CENTER_STREAMS; s++) {
     const az = (s / CENTER_STREAMS) * Math.PI * 2 + Math.random() * 0.3;
-    const life = 2.0 + Math.random() * 0.6;
-    const up = 20 + Math.random() * 3;
-    const out = 1.4 + Math.random() * 1.4;
-    for (let k = 0; k < 34; k++) {
-      drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: (k / 34) * life, life, up, out, grp: 3 });
+    const life = 2.8 + Math.random() * 0.8; // long enough to reach the apex
+    const up = 20 + Math.random() * 5; // tall at max capacity (a touch lower)
+    const out = 4 + Math.random() * 2.5; // medium parabola arc radius
+    const CN = 84; // dense, so the tall stream stays continuous
+    for (let k = 0; k < CN; k++) {
+      drops.push({ ox: 0, oy: topY4, oz: 0, cx: Math.cos(az), cz: Math.sin(az), ph: (k / CN) * life, life, up, out, grp: 3 });
     }
   }
   const COUNT = drops.length;
