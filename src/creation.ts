@@ -22,14 +22,16 @@ export interface Creation {
     env?: {
       renderer: THREE.WebGLRenderer;
       scene: THREE.Scene;
+      camera?: THREE.Camera;
       // false = don't spin the whole group (auto/kiosk mode orbits the camera
       // instead, so the group should hold still while the rings keep spinning).
       spinGroup?: boolean;
     },
   ) => void;
   toggles?: Toggle[]; // optional feature toggles (e.g. fire / water / music)
-  status?: () => string; // optional one-line HUD (e.g. the simulated clock)
-  dispose?: () => void; // tear down any DOM/listeners it added
+  status?: () => string;    // optional one-line HUD (e.g. the simulated clock)
+  dayCount?: () => number;  // increments each simulated midnight — used to schedule pattern changes
+  dispose?: () => void;     // tear down any DOM/listeners it added
 }
 
 export type CreationFactory = () => Creation;

@@ -91,10 +91,11 @@ bar.style.cssText =
 // clock. Filled per-frame in the render loop from current.status().
 const hud = document.createElement("div");
 hud.style.cssText =
-  "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.09em;" +
-  "color:#3c3f42;font-variant-numeric:tabular-nums;pointer-events:none;" +
-  "background:rgba(246,244,238,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);" +
-  "border-radius:8px;padding:3px 9px;display:none;"; // shown only when there's a status line
+  "font-family:'Helvetica Neue',Arial,sans-serif;letter-spacing:.2em;" +
+  "font-variant-numeric:tabular-nums;font-weight:200;" +
+  "color:rgba(255,255,255,.22);" +
+  "text-shadow:0 1px 18px rgba(0,0,0,.6),0 0 4px rgba(0,0,0,.35);" +
+  "line-height:1;user-select:none;display:none;";
 if (!THUMB && !AUTO) {
   document.body.appendChild(bar);
   const credit = makeCredit(); // bottom-right homage in regular mode
@@ -103,10 +104,8 @@ if (!THUMB && !AUTO) {
   credit.style.bottom = "12px";
   credit.style.zIndex = "9999";
   document.body.appendChild(credit);
-  hud.style.position = "fixed";
-  hud.style.left = "14px";
-  hud.style.bottom = "12px";
-  hud.style.zIndex = "9999";
+  hud.style.cssText += "position:fixed;left:20px;bottom:18px;z-index:9999;" +
+    "font-size:clamp(22px,3.8vh,40px);";
   document.body.appendChild(hud);
 }
 
@@ -346,41 +345,27 @@ if (AUTO) {
   // ---- presentation frame -------------------------------------------------
   // Compose for the 4640×1760 screen with a thin gallery-line border and a
   // title. Letterboxed so it looks identical on any monitor; on the real
-  // screen it fills edge to edge.
-  const TARGET_ASPECT = 4640 / 1760;
+  // screen it fills edge to edge — no letterboxing.
   const surround = document.createElement("div");
-  surround.style.cssText =
-    "position:fixed;inset:0;background:#101012;display:flex;" +
-    "align-items:center;justify-content:center;z-index:1;";
+  surround.style.cssText = "position:fixed;inset:0;z-index:1;";
   const frame = document.createElement("div");
   frame.style.cssText = "position:relative;overflow:hidden;background:#ccced0;";
   renderer.domElement.style.cssText = "display:block;width:100%;height:100%;";
   frame.appendChild(renderer.domElement); // move the canvas inside the frame
-  const title = document.createElement("div");
-  title.style.cssText =
-    "position:absolute;top:3.4%;left:0;right:0;text-align:center;" +
-    "pointer-events:none;z-index:3;text-transform:uppercase;letter-spacing:.3em;" +
-    "font-family:'Helvetica Neue',Arial,sans-serif;color:#2b2b29;" +
-    // light halo keeps the dark lettering readable against the night sky
-    "text-shadow:0 0 8px rgba(255,255,255,.6),0 0 2px rgba(255,255,255,.5);";
-  title.innerHTML =
-    '<span style="font-weight:600">Agam</span>' +
-    '<span style="opacity:.45;margin:0 .55em">&mdash;</span>' +
-    '<span style="font-weight:300">Fire &amp; Water</span>';
-  frame.appendChild(title);
   // homage / attribution, bottom-right corner of the frame
   const credit = makeCredit();
   credit.style.position = "absolute";
   credit.style.right = "2.4%";
   credit.style.bottom = "3%";
   credit.style.zIndex = "3";
+  // kiosk: ghost text, no pill — the art should dominate
+  credit.style.background = "none";
+  credit.style.backdropFilter = "none";
+  (credit.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = "none";
+  credit.style.color = "rgba(255,255,255,.32)";
+  credit.style.textShadow = "0 1px 10px rgba(0,0,0,.5)";
   frame.appendChild(credit);
-  // the clock sits bottom-left of the frame, mirroring the credit
-  hud.style.position = "absolute";
-  hud.style.left = "2.4%";
-  hud.style.bottom = "3%";
-  hud.style.zIndex = "3";
-  frame.appendChild(hud);
+  // (no clock in kiosk — the sky itself tells the time)
   surround.appendChild(frame);
   document.body.appendChild(surround);
   frameEl = frame; // the shared glide loop fades re-renders inside this frame
@@ -389,28 +374,12 @@ if (AUTO) {
 
   const frameLayout = () => {
     const vw = window.innerWidth, vh = window.innerHeight;
-    // On a wide-enough viewport (the real wall, or a desktop landscape window)
-    // lock to the 4640×1760 aspect so the composition is exactly what ships.
-    // On a phone / portrait window that would be a thin letterboxed sliver, so
-    // instead fill the viewport with the scene.
-    const fill = vw / vh < 1.4;
-    let w: number, h: number, aspect: number;
-    if (fill) {
-      w = vw; h = vh; aspect = vw / vh;
-    } else {
-      w = vw; h = w / TARGET_ASPECT;
-      if (h > vh) { h = vh; w = h * TARGET_ASPECT; }
-      aspect = TARGET_ASPECT;
-    }
-    frame.style.width = `${w}px`;
-    frame.style.height = `${h}px`;
-    renderer.setSize(w, h, false); // false: keep the canvas's 100% CSS size
-    camera.aspect = aspect;
+    frame.style.width = `${vw}px`;
+    frame.style.height = `${vh}px`;
+    renderer.setSize(vw, vh, false);
+    camera.aspect = vw / vh;
     camera.updateProjectionMatrix();
-    // cap the title by width too, so it never overflows a narrow frame
-    title.style.fontSize = `${Math.max(11, Math.min(Math.round(h * 0.034), Math.round(w * 0.045)))}px`;
-    credit.style.fontSize = `${Math.max(11, Math.round(Math.min(h * 0.014, w * 0.022)))}px`;
-    hud.style.fontSize = credit.style.fontSize;
+    credit.style.fontSize = `${Math.max(11, Math.round(Math.min(vh * 0.014, vw * 0.022)))}px`;
   };
   frameLayout();
   window.addEventListener("resize", frameLayout);
@@ -519,10 +488,15 @@ if (AUTO) {
       el = rand(-18 * DEG, 6 * DEG); dist = rand(54, 78); lookY = rand(3, 11); dur = rand(11, 17); // from-below (dominant)
     } else if (r < 0.84) {
       el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 14); // mid orbit
-    } else {
+    } else if (r < 0.95) {
       // wide establishing shot: pull right back and aim a little upward, so
       // the sky — sun, moon, high jet surges — shares the frame with the tower
       el = rand(2 * DEG, 20 * DEG); dist = rand(150, 250); lookY = rand(8, 24); dur = rand(12, 18);
+    } else {
+      // rare planet shot: pull way out until the fountain is a jewel on its
+      // little world — curvature, stars and the orbiting sun/moon fill the
+      // frame. (Capped at 550: the camera must stay inside the sky dome.)
+      el = rand(4 * DEG, 18 * DEG); dist = rand(300, 550); lookY = rand(0, 16); dur = rand(16, 24);
     }
     el = Math.max(el, Math.asin(Y_FLOOR / dist)); // never below the pool
     if (big) dur = Math.max(dur, rand(20, 30));
@@ -574,10 +548,35 @@ if (AUTO) {
   };
   uiFade = crossfade; // toolbar re-render clicks share the same dip
 
-  let nextSoft = rand(30, 45); // frequent recolour + new patterns (keeps camera)
-  let nextFull = rand(180, 300); // rarer full re-roll
-  let holdDir = 1; // drift direction while holding (continues the last leg)
+  let holdDir = 1;
   let lastNow = 0;
+  // Pattern-change cadence, in simulated midnights. 4 days ≈ 2 minutes of wall
+  // time at 27s/day — the same pacing as the original "every 2 days" spec,
+  // which was written when a day lasted 55s (time has been doubled since).
+  const PATTERN_DAYS = 4;
+  let lastDayCount = 0;
+  // A slow, dreamy dip for the midnight pattern change — the night deepens,
+  // the world sleeps, and it wakes with fresh colours. Not a glitchy flash:
+  // the dip is into the night sky's own near-black, over ~2.5s each way.
+  const nightCrossfade = (swap: () => void) => {
+    const nf = document.createElement("div");
+    nf.style.cssText = frameEl
+      ? "position:absolute;inset:0;background:#070a12;opacity:0;pointer-events:none;z-index:2;transition:opacity 2500ms ease-in-out;"
+      : "position:fixed;inset:0;background:#070a12;opacity:0;pointer-events:none;z-index:9998;transition:opacity 2500ms ease-in-out;";
+    (frameEl ?? document.body).appendChild(nf);
+    // force a style flush before flipping opacity — set in the same task as
+    // the append, the transition never runs and the screen SNAPS to black
+    void nf.offsetHeight;
+    nf.style.opacity = "1";
+    setTimeout(() => {
+      swap();
+      // brief hold in the dark so the rebuild hitch hides inside it
+      setTimeout(() => {
+        nf.style.opacity = "0";
+        setTimeout(() => nf.remove(), 2600);
+      }, 400);
+    }, 2600);
+  };
 
   autoTick = (now: number) => {
     const dtg = Math.min(0.1, Math.max(0, now - lastNow));
@@ -587,11 +586,11 @@ if (AUTO) {
         orbit.az = to.az; orbit.el = to.el; orbit.dist = to.dist; orbit.lookY = to.lookY; orbit.roll = to.roll;
         holdDir = Math.sign(to.az - from.az) || 1;
         holding = true;
-        holdUntil = now + rand(0.6, 4.5); // varied beats: quick glances & long looks
+        holdUntil = now + rand(0.6, 4.5);
       } else if (now >= holdUntil) {
         pickLeg(now);
       } else {
-        orbit.az += holdDir * 0.7 * DEG * dtg; // whisper of drift — never a dead stop
+        orbit.az += holdDir * 0.7 * DEG * dtg;
       }
     } else {
       const t = smooth((now - legStart) / legDur);
@@ -603,13 +602,16 @@ if (AUTO) {
     }
     applyOrbit();
 
-    if (now >= nextFull) {
-      crossfade(() => setCreation("fountain", true));
-      nextFull = now + rand(180, 300);
-      nextSoft = now + rand(30, 45);
-    } else if (now >= nextSoft) {
-      crossfade(() => setCreation("fountain", true));
-      nextSoft = now + rand(30, 45);
+    // Pattern change: rebuild the fountain at midnight every PATTERN_DAYS
+    // simulated days. dayCount increments each midnight in fountain.ts and
+    // RESTARTS AT 0 on rebuild, so lastDayCount must reset with it.
+    const dc = current?.dayCount?.() ?? 0;
+    if (dc - lastDayCount >= PATTERN_DAYS) {
+      lastDayCount = dc;
+      nightCrossfade(() => {
+        setCreation("fountain", true);
+        lastDayCount = 0;
+      });
     }
   };
 
@@ -637,14 +639,30 @@ if (AUTO) {
 // ---------------------------------------------------------------------------
 let wasGliding = false;
 let lastHud = "";
+// ---- time pause (click the HUD clock to freeze / resume the simulation) ----
+let timePaused = false;
+let pauseStart = 0;       // raw timer value when pause began
+let totalPausedTime = 0;  // accumulated pause duration (subtracted from elapsed)
+hud.style.cursor = "pointer";
+hud.title = "Click to pause / resume time";
+hud.addEventListener("click", () => {
+  timePaused = !timePaused;
+  if (timePaused) {
+    pauseStart = timer.getElapsed();
+  } else {
+    totalPausedTime += timer.getElapsed() - pauseStart;
+  }
+});
 const animate = () => {
   requestAnimationFrame(animate);
   timer.update();
-  const t = (elapsed = timer.getElapsed());
-  const hudText = current?.status?.() ?? "";
+  const raw = timer.getElapsed();
+  const t = (elapsed = timePaused ? (pauseStart - totalPausedTime) : (raw - totalPausedTime));
+  const baseStatus = current?.status?.() ?? "";
+  const hudText = baseStatus ? (timePaused ? baseStatus + " ⏸" : baseStatus) : "";
   if (hudText !== lastHud) {
     hud.textContent = hudText;
-    hud.style.display = hudText ? "inline-block" : "none"; // empty pill would show as a blob
+    hud.style.display = hudText ? "inline-block" : "none";
     lastHud = hudText;
   }
   // glide only governs the fountain, and only when the user isn't in control
@@ -654,7 +672,7 @@ const animate = () => {
   else if (trackball.enabled) trackball.update(); // free-tumble agamograph
   else controls.update(); // manual fountain control
   checkIdle?.(t);
-  current?.update?.(t, autoRotate, { renderer, scene, spinGroup: !gliding });
+  current?.update?.(t, autoRotate, { renderer, scene, camera, spinGroup: !gliding });
   renderer.render(scene, camera);
   wasGliding = gliding;
 };
