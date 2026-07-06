@@ -98,12 +98,14 @@ export function createFountain(
         if (r2 >= 1) { img.data[o + 3] = 0; continue; }
         const nz = Math.sqrt(1 - r2);
         const r = Math.sqrt(r2);
-        const limb = 0.55 + 0.45 * nz;         // gentle limb darkening — keeps the orb bright
+        // limb darkening lives in the COLOR channels — putting it in alpha
+        // made the disc translucent and the sky bled through the whole orb
+        const limb = 0.55 + 0.45 * nz;
         const edge = Math.min(1, (1 - r) * 22); // crisp disc boundary
-        img.data[o]     = 255;
-        img.data[o + 1] = Math.round(252 + 3 * nz);
-        img.data[o + 2] = Math.round(210 + 45 * nz);
-        img.data[o + 3] = Math.round(255 * limb * edge);
+        img.data[o]     = Math.round(255 * limb);
+        img.data[o + 1] = Math.round((252 + 3 * nz) * limb);
+        img.data[o + 2] = Math.round((210 + 45 * nz) * limb);
+        img.data[o + 3] = Math.round(255 * edge); // fully opaque inside the disc
       }
     }
     ctx.putImageData(img, 0, 0);
@@ -158,9 +160,10 @@ export function createFountain(
         img.data[o] = Math.min(255, 235 * L + 26);
         img.data[o + 1] = Math.min(255, 238 * L + 30);
         img.data[o + 2] = Math.min(255, 246 * L + 42); // blue-ish earthshine floor
-        img.data[o + 3] = Math.round(
-          255 * Math.min(1, (1 - Math.sqrt(r2)) * 14) * (0.24 + 0.76 * lit),
-        );
+        // alpha is pure edge feather — the old `(0.24 + 0.76 * lit)` factor
+        // (which hid the dark side of partial phases) made the full moon's
+        // limb translucent, so the sky bled through its rim
+        img.data[o + 3] = Math.round(255 * Math.min(1, (1 - Math.sqrt(r2)) * 14));
       }
     }
     ctx.putImageData(img, 0, 0);
@@ -875,7 +878,11 @@ export function createFountain(
       // progressively bitten by the curved horizon, exactly like the real thing.
       // (The moon's opacity only tracks the day-sky washout, never the horizon.)
       sunMat.opacity = 1;
-      moonMat.opacity = 0.92 * nightL + 0.3 * dayL;
+      // Moon: SOLID at night — and it must saturate to 1 quickly, because the
+      // full moon always rises at sunset / sets at sunrise, i.e. exactly in the
+      // middle of the day↔night blend. A linear blend left every rise/set at
+      // ~0.6 opacity, which read as a ghost moon. Only the day sky washes it out.
+      moonMat.opacity = Math.min(1, 0.3 + 0.9 * nightL);
       // moonLIGHT on the fountain follows the moon's true altitude — the light
       // should die as the moon drops below the fountain's own horizon,
       // independent of where the viewing camera happens to be
