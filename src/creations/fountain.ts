@@ -165,6 +165,68 @@ export function createFountain(
   let simHour = 10; // simulated time of day (for the HUD clock)
   let sunUp = true;
 
+  // ---- sky dome: the "background" is a real sky, not a flat clear color.
+  // A big inward-facing sphere carries a horizon→zenith gradient driven by the
+  // same day/dusk/night blends as the lights, a warm glow pooled around the
+  // sun's spot at golden hour, and hashed stars that twinkle in after dark.
+  // The pool's mirror reflects it, so the water picks up the sky for free.
+  const ZEN_DAY = new THREE.Color(0xaebbc7), ZEN_NIGHT = new THREE.Color(0x252c3d);
+  const ZEN_DUSK = new THREE.Color(0x8580a0); // violet overhead while the horizon burns
+  const zenNow = new THREE.Color();
+  const skyUniforms = {
+    uZenith: { value: new THREE.Color(0xaebbc7) },
+    uHorizon: { value: new THREE.Color(0xccced0) },
+    uNight: { value: 0 },
+    uTime: { value: 0 },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uGlow: { value: 0 }, // dusk glow strength (peaks with the sun at the horizon)
+  };
+  const skyMat = new THREE.ShaderMaterial({
+    uniforms: skyUniforms,
+    side: THREE.BackSide,
+    depthWrite: false,
+    vertexShader: `
+      varying vec3 vDir;
+      void main(){
+        vDir = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uZenith, uHorizon;
+      uniform float uNight, uTime, uGlow;
+      uniform vec3 uSunDir;
+      varying vec3 vDir;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      void main(){
+        vec3 d = normalize(vDir);
+        float h = clamp(d.y, 0.0, 1.0);
+        // haze hugs the horizon, zenith colour takes over above
+        vec3 sky = mix(uHorizon, uZenith, pow(h, 0.65));
+        // golden-hour glow pooled around the sun's azimuth, fading with height
+        float sunAmt = max(dot(d, uSunDir), 0.0);
+        sky += uGlow * vec3(1.0, 0.52, 0.25) * pow(sunAmt, 6.0) * (1.0 - h) * 0.55;
+        // stars: sparse hashed cells above the horizon, twinkling in at night
+        if (uNight > 0.02 && d.y > 0.02) {
+          vec2 sc = vec2(atan(d.z, d.x) * 26.0, d.y * 52.0);
+          vec2 cell = floor(sc);
+          float hs = hash(cell);
+          if (hs > 0.91) {
+            vec2 sp = vec2(hash(cell + 7.0), hash(cell + 13.0)) * 0.6 + 0.2;
+            float sd = length(fract(sc) - sp);
+            float tw = 0.7 + 0.3 * sin(uTime * (2.0 + 4.0 * hs) + hs * 40.0);
+            sky += smoothstep(0.12, 0.0, sd) * tw * uNight * min(1.0, d.y * 3.0) * vec3(0.85, 0.88, 0.95);
+          }
+        }
+        gl_FragColor = vec4(sky, 1.0);
+      }
+    `,
+  });
+  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(SKY_R * 1.7, 48, 32), skyMat);
+  skyDome.renderOrder = -1; // paint first; everything else draws over it
+  skyDome.frustumCulled = false; // the camera lives inside the sphere
+  group.add(skyDome);
+
   // Darker, slightly see-through neutral fill for the upper levels (ring drums +
   // central column) — no water, no reflection.
   const neutralMat = new THREE.MeshLambertMaterial({
@@ -759,9 +821,18 @@ export function createFountain(
       hemi.intensity = 0.85 + 1.75 * dayL;
       hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
       hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
-      // background follows: day gray → GOLDEN dusk → night blue-gray
+      // horizon follows: day haze → GOLDEN dusk → night blue-gray; the clear
+      // color still tracks it so the toolbar crossfade dips through the sky
       bgNow.lerpColors(BG_NIGHT, BG_DAY, dayL).lerp(BG_DUSK, duskL * 0.6);
       env?.renderer.setClearColor(bgNow);
+      // sky dome: horizon = bgNow, zenith runs its own bluer/darker ramp
+      zenNow.lerpColors(ZEN_NIGHT, ZEN_DAY, dayL).lerp(ZEN_DUSK, duskL * 0.45);
+      (skyUniforms.uHorizon.value as THREE.Color).copy(bgNow);
+      (skyUniforms.uZenith.value as THREE.Color).copy(zenNow);
+      skyUniforms.uNight.value = nightL;
+      skyUniforms.uTime.value = time;
+      (skyUniforms.uSunDir.value as THREE.Vector3).set(ue, uu, us);
+      skyUniforms.uGlow.value = duskL;
       // simulated clock: noon when the sun peaks (th = π/2), midnight opposite
       simHour = ((((th - Math.PI / 2) / (Math.PI * 2)) * 24 + 12) % 24 + 24) % 24;
       sunUp = se > 0;

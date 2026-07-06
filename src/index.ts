@@ -81,14 +81,20 @@ renderer.domElement.addEventListener("dblclick", (e) => e.preventDefault());
 const THUMB = new URLSearchParams(location.search).has("thumb");
 const bar = document.createElement("div");
 bar.id = "ui-bar";
-bar.style.cssText = "position:fixed;top:14px;left:14px;z-index:9999;display:flex;gap:4px;align-items:center;";
+// Frosted pill behind the buttons so they read at every hour of the sky's
+// day/night cycle (dark icons on a bare night sky were invisible).
+bar.style.cssText =
+  "position:fixed;top:14px;left:14px;z-index:9999;display:flex;gap:4px;align-items:center;" +
+  "background:rgba(246,244,238,.8);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);" +
+  "border-radius:12px;padding:4px 8px;box-shadow:0 1px 8px rgba(0,0,0,.14);";
 // HUD (bottom-left): a creation's one-line status — the fountain's simulated
 // clock. Filled per-frame in the render loop from current.status().
 const hud = document.createElement("div");
 hud.style.cssText =
   "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.09em;" +
-  "color:#4e5154;opacity:.85;font-variant-numeric:tabular-nums;" +
-  "pointer-events:none;text-shadow:0 1px 2px rgba(255,255,255,.2);";
+  "color:#3c3f42;font-variant-numeric:tabular-nums;pointer-events:none;" +
+  "background:rgba(246,244,238,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);" +
+  "border-radius:8px;padding:3px 9px;display:none;"; // shown only when there's a status line
 if (!THUMB && !AUTO) {
   document.body.appendChild(bar);
   const credit = makeCredit(); // bottom-right homage in regular mode
@@ -172,7 +178,9 @@ function makeCredit(): HTMLAnchorElement {
   a.style.cssText =
     "display:inline-block;text-align:right;line-height:1.45;" +
     "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;" +
-    "color:#4e5154;opacity:.85;text-decoration:none;";
+    "color:#3c3f42;text-decoration:none;" +
+    "background:rgba(246,244,238,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);" +
+    "border-radius:8px;padding:3px 9px;"; // same pill as the HUD — legible at night
   return a;
 }
 
@@ -353,7 +361,8 @@ if (AUTO) {
     "position:absolute;top:3.4%;left:0;right:0;text-align:center;" +
     "pointer-events:none;z-index:3;text-transform:uppercase;letter-spacing:.3em;" +
     "font-family:'Helvetica Neue',Arial,sans-serif;color:#2b2b29;" +
-    "text-shadow:0 1px 2px rgba(255,255,255,.25);";
+    // light halo keeps the dark lettering readable against the night sky
+    "text-shadow:0 0 8px rgba(255,255,255,.6),0 0 2px rgba(255,255,255,.5);";
   title.innerHTML =
     '<span style="font-weight:600">Agam</span>' +
     '<span style="opacity:.45;margin:0 .55em">&mdash;</span>' +
@@ -633,7 +642,11 @@ const animate = () => {
   timer.update();
   const t = (elapsed = timer.getElapsed());
   const hudText = current?.status?.() ?? "";
-  if (hudText !== lastHud) { hud.textContent = hudText; lastHud = hudText; }
+  if (hudText !== lastHud) {
+    hud.textContent = hudText;
+    hud.style.display = hudText ? "inline-block" : "none"; // empty pill would show as a blob
+    lastHud = hudText;
+  }
   // glide only governs the fountain, and only when the user isn't in control
   const gliding = !isManual && currentName === "fountain";
   if (gliding && !wasGliding) seedGlide?.(); // entering the glide → seed from current view
