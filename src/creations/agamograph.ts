@@ -24,6 +24,11 @@ export function createAgamograph(): Creation {
   }
   const creamMat = new THREE.MeshBasicMaterial({ color: CREAM });
 
+  // build-in: cubes start sunk and rise into place, staggered outward from the
+  // centre; afterwards each one breathes with a tiny bob (small enough not to
+  // blur the venetian reveal).
+  const cubes: { mesh: THREE.Mesh; ty: number; delay: number; phase: number }[] = [];
+
   for (let i = -10; i < 10; i++) {
     for (let j = -10; j < 10; j++) {
       const geo = new THREE.BoxGeometry();
@@ -43,7 +48,13 @@ export function createAgamograph(): Creation {
       const cube = new THREE.Mesh(geo, [
         faceMats[0], faceMats[1], faceMats[2], faceMats[3], creamMat, creamMat,
       ]);
-      cube.position.set(i, i + 1, j + 0.5);
+      cube.position.set(i, i + 1 - 6, j + 0.5); // sunk; rises on build-in
+      cubes.push({
+        mesh: cube,
+        ty: i + 1,
+        delay: Math.hypot(i + 0.5, j + 0.5) * 0.045 + Math.random() * 0.12,
+        phase: (i + j) * 0.35,
+      });
       group.add(cube);
     }
   }
@@ -88,12 +99,24 @@ export function createAgamograph(): Creation {
     };
   }
 
+  let t0: number | null = null; // creation time (first update tick)
+  let lastT = 0;
   return {
     name: "Agamograph",
     group,
     camera: [-47, 47, 0], // pulled back to keep framing at the shared 52° FOV
-    update: (_t, autoRotate) => {
-      if (autoRotate) group.rotation.y += 0.0003;
+    update: (t, autoRotate) => {
+      const dt = Math.min(0.05, Math.max(0, t - lastT));
+      lastT = t;
+      if (autoRotate) group.rotation.y += 0.018 * dt; // dt → same pace on any Hz
+      if (t0 === null) t0 = t;
+      const local = t - t0;
+      for (const c of cubes) {
+        const k = Math.min(1, Math.max(0, (local - c.delay) / 0.9));
+        const e = 1 - Math.pow(1 - k, 3); // ease-out rise
+        const bob = 0.04 * Math.sin(t * 0.6 + c.phase) * k; // gentle breathing
+        c.mesh.position.y = c.ty - 6 * (1 - e) + bob;
+      }
     },
     dispose: () => btn?.remove(),
   };

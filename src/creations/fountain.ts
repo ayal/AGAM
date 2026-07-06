@@ -3,6 +3,7 @@ import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { makeStrip } from "../patterns";
 import { createMusic } from "../music";
 import { createFireVolume } from "../fire";
+import { makeSoftSprite, makeDropSprite, makeParticleMaterial } from "../points";
 import type { Creation } from "../creation";
 
 // Agam's Fire & Water Fountain (Dizengoff Square): five stacked rings, profile
@@ -59,9 +60,20 @@ export function createFountain(
   }
   const poolY = -totalH / 2 - 0.5;
 
+  // Gentle gallery lighting: a bright hemisphere keeps every face close to its
+  // painted colour (matte, poster-bright), while a soft warm key + cool fill
+  // give the pleats real dimensionality as the rings turn. Only the Lambert
+  // surfaces (panels, caps, drums) respond — pool/jets/fire are shaders.
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 2.6);
+  const key = new THREE.DirectionalLight(0xfff2e0, 1.5);
+  key.position.set(60, 90, 40);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7);
+  fill.position.set(-50, 40, -60);
+  group.add(hemi, key, fill);
+
   // Darker, slightly see-through neutral fill for the upper levels (ring drums +
   // central column) — no water, no reflection.
-  const neutralMat = new THREE.MeshBasicMaterial({
+  const neutralMat = new THREE.MeshLambertMaterial({
     color: 0x6f6a5e,
     transparent: true,
     opacity: 0.55,
@@ -146,22 +158,31 @@ export function createFountain(
         tDiffuse: { value: null },
         textureMatrix: { value: null },
         uTime: { value: 0 },
+        // impact ripples: normalized radius where each jet ring's water lands,
+        // and its strength (both driven per-frame from the jet pressure)
+        uImpactR: { value: new THREE.Vector3(0.5, 0.55, 0.6) },
+        uImpactA: { value: new THREE.Vector3(0, 0, 0) },
       },
       vertexShader: `
         uniform mat4 textureMatrix;
         varying vec4 vUv;     // projective coords into the reflection texture
         varying vec2 vLocal;  // disc-local uv for the water ripple
+        varying vec3 vWorldPos; // for the Fresnel view angle
         void main() {
           vLocal = uv;
           vUv = textureMatrix * vec4(position, 1.0);
+          vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: `
         uniform sampler2D tDiffuse;
         uniform float uTime;
+        uniform vec3 uImpactR;
+        uniform vec3 uImpactA;
         varying vec4 vUv;
         varying vec2 vLocal;
+        varying vec3 vWorldPos;
         void main() {
           // summed directional ripples (no multiplicative blobs) → smooth
           // flowing water rather than isolated spots; low amplitude = subtle
@@ -169,14 +190,29 @@ export function createFountain(
                   + sin(vLocal.y * 9.0 - uTime * 0.45)
                   + 0.7 * sin((vLocal.x + vLocal.y) * 13.0 + uTime * 0.65)
                   + 0.5 * sin((vLocal.x - vLocal.y) * 17.0 - uTime * 0.6);
-          float m = clamp(0.5 + 0.1 * w, 0.0, 1.0);
+          // expanding rings around each jet-ring's landing radius, so the pool
+          // visibly reacts where the falling water actually meets it
+          float dc = length(vLocal - vec2(0.5)) * 2.0;
+          float rings =
+              uImpactA.x * exp(-24.0 * abs(dc - uImpactR.x)) * sin((dc - uImpactR.x) * 80.0 - uTime * 7.0)
+            + uImpactA.y * exp(-24.0 * abs(dc - uImpactR.y)) * sin((dc - uImpactR.y) * 80.0 - uTime * 7.4)
+            + uImpactA.z * exp(-24.0 * abs(dc - uImpactR.z)) * sin((dc - uImpactR.z) * 80.0 - uTime * 6.6);
+          float m = clamp(0.5 + 0.1 * w + rings, 0.0, 1.0);
           vec3 deep  = vec3(0.12, 0.36, 0.62);
           vec3 light = vec3(0.34, 0.66, 0.88);
           vec3 water = mix(deep, light, m);
           vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
-                             cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006;
+                             cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006
+                      + vec2(rings * 0.01);
           vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
-          gl_FragColor = vec4(mix(water, refl.rgb, 0.34), 1.0);
+          // Fresnel: near-vertical views see into the water (deep colour),
+          // grazing views become mostly mirror — like a real pool
+          vec3 V = normalize(cameraPosition - vWorldPos);
+          float fres = 0.18 + 0.55 * pow(1.0 - max(V.y, 0.0), 2.5);
+          // contact shading: the water darkens toward the tower base, which
+          // grounds the sculpture in the pool instead of floating on a disc
+          float ao = 1.0 - 0.22 * smoothstep(0.95, 0.55, dc);
+          gl_FragColor = vec4(mix(water, refl.rgb, fres) * ao, 1.0);
         }
       `,
     };
@@ -213,8 +249,8 @@ export function createFountain(
 
     const stripA = makeStrip(P, rows, mono, Math.random() < 0.6);
     const stripB = makeStrip(P, rows, mono, Math.random() < 0.6);
-    const matA = new THREE.MeshBasicMaterial({ map: stripA.texture, side: THREE.DoubleSide });
-    const matB = new THREE.MeshBasicMaterial({ map: stripB.texture, side: THREE.DoubleSide });
+    const matA = new THREE.MeshLambertMaterial({ map: stripA.texture, side: THREE.DoubleSide });
+    const matB = new THREE.MeshLambertMaterial({ map: stripB.texture, side: THREE.DoubleSide });
 
     const vert = (k: number) => {
       const ang = (k * Math.PI) / P;
@@ -253,7 +289,7 @@ export function createFountain(
     // colored caps that follow the ZIGZAG (cog) outline, closing the top &
     // bottom of the pleated ring. Each cap segment is colored to match its rib
     // (sampled from that rib's composition column) via vertex colors.
-    const capMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const capMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const ri = Math.max(0.3, Rin - 0.1);
     const buildCap = (yy: number) => {
       const verts: number[] = [];
@@ -277,6 +313,7 @@ export function createFountain(
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
       geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+      geo.computeVertexNormals(); // caps are now lit (Lambert needs normals)
       return geo;
     };
     ring.add(new THREE.Mesh(buildCap(y + h / 2), capMat));
@@ -289,7 +326,8 @@ export function createFountain(
   // each ring spins independently and re-rolls its own direction + gentle speed
   // on a timer during playback (eased, so it slows, stops and reverses
   // naturally) — so adjacent rings drift in and out of sync on their own.
-  const randSpin = () => (Math.random() < 0.5 ? 1 : -1) * (0.0006 + Math.random() * 0.0012);
+  // speeds in rad/s (scaled by dt each frame → same pace at 60Hz and 120Hz)
+  const randSpin = () => (Math.random() < 0.5 ? 1 : -1) * (0.036 + Math.random() * 0.072);
   const ringSpeed = ringGroups.map(randSpin); // current (eased) speed
   const ringTarget = ringSpeed.slice();        // speed it's easing toward
   const ringNext: number[] = ringGroups.map(() => 0); // time of next re-roll
@@ -336,14 +374,74 @@ export function createFountain(
     }
   }
   const COUNT = drops.length;
+  const sprite = makeSoftSprite(); // soft puff — the fire halo
+  const dropSprite = makeDropSprite(); // crisp bead — jets / splash / embers
   const positions = new Float32Array(COUNT * 3);
+  // per-drop size + alpha + tint variation → spray, not uniform confetti
+  const dropSize = new Float32Array(COUNT);
+  const dropAlpha = new Float32Array(COUNT);
+  const dropColor = new Float32Array(COUNT * 3);
+  // per-drop sideways scatter that grows with flight time: streams leave the
+  // nozzle tight and feather into mist toward the end of the arc
+  const dropJit = new Float32Array(COUNT);
+  const DRAG = 0.35; // horizontal drag → arcs fall steeper than they rise
+  for (let n = 0; n < COUNT; n++) {
+    positions[n * 3 + 1] = -9999;
+    dropJit[n] = (Math.random() - 0.5) * 0.5;
+    dropSize[n] = 0.3 + Math.random() * 0.22;
+    dropAlpha[n] = 0.7 + Math.random() * 0.3;
+    const k = Math.random() * 0.3; // lighten some drops around the jet blue
+    dropColor[n * 3] = 0.25 + k * 0.5;
+    dropColor[n * 3 + 1] = 0.6 + k * 0.35;
+    dropColor[n * 3 + 2] = 0.84 + k * 0.16;
+  }
   const jetGeo = new THREE.BufferGeometry();
   jetGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  const jets = new THREE.Points(
-    jetGeo,
-    new THREE.PointsMaterial({ color: 0x3f9ad6, size: 0.6, transparent: true, opacity: 0.95, depthWrite: false }),
-  );
+  jetGeo.setAttribute("aSize", new THREE.BufferAttribute(dropSize, 1));
+  jetGeo.setAttribute("aAlpha", new THREE.BufferAttribute(dropAlpha, 1));
+  jetGeo.setAttribute("aColor", new THREE.BufferAttribute(dropColor, 3));
+  const jetMat = makeParticleMaterial(dropSprite);
+  const jets = new THREE.Points(jetGeo, jetMat);
   group.add(jets);
+
+  // ---- splashes: short-lived droplets kicked up where a jet meets the pool
+  // (drops used to just vanish at the surface). Slots are recycled round-robin.
+  const SPLASH_N = 420;
+  const spX = new Float32Array(SPLASH_N), spZ = new Float32Array(SPLASH_N);
+  const spVX = new Float32Array(SPLASH_N), spVY = new Float32Array(SPLASH_N), spVZ = new Float32Array(SPLASH_N);
+  const spAge = new Float32Array(SPLASH_N).fill(9);
+  const spLife = new Float32Array(SPLASH_N).fill(1);
+  const spPos = new Float32Array(SPLASH_N * 3);
+  const spSize = new Float32Array(SPLASH_N);
+  const spAlpha = new Float32Array(SPLASH_N);
+  const spColor = new Float32Array(SPLASH_N * 3);
+  for (let i = 0; i < SPLASH_N; i++) {
+    spPos[i * 3 + 1] = -9999;
+    spColor[i * 3] = 0.62; spColor[i * 3 + 1] = 0.82; spColor[i * 3 + 2] = 0.95; // pale spray
+  }
+  let spNext = 0;
+  const spawnSplash = (x: number, z: number) => {
+    const i = spNext;
+    spNext = (spNext + 1) % SPLASH_N;
+    spX[i] = x; spZ[i] = z;
+    const a = Math.random() * Math.PI * 2;
+    const sp = 0.4 + Math.random() * 1.1;
+    spVX[i] = Math.cos(a) * sp;
+    spVZ[i] = Math.sin(a) * sp;
+    spVY[i] = 2 + Math.random() * 3;
+    spAge[i] = 0;
+    spLife[i] = 0.3 + Math.random() * 0.3;
+    spSize[i] = 0.22 + Math.random() * 0.2;
+  };
+  const splashGeo = new THREE.BufferGeometry();
+  splashGeo.setAttribute("position", new THREE.BufferAttribute(spPos, 3));
+  splashGeo.setAttribute("aSize", new THREE.BufferAttribute(spSize, 1));
+  splashGeo.setAttribute("aAlpha", new THREE.BufferAttribute(spAlpha, 1));
+  splashGeo.setAttribute("aColor", new THREE.BufferAttribute(spColor, 3));
+  const splashMat = makeParticleMaterial(dropSprite);
+  const splash = new THREE.Points(splashGeo, splashMat);
+  group.add(splash);
+  const wasAbove = new Uint8Array(COUNT); // drop was over the pool last frame
 
   // occasional slow surges so jets sometimes shoot MUCH higher than normal
   const surge = (t: number, phase: number) => {
@@ -388,49 +486,48 @@ export function createFountain(
   // flickering fire height/pressure
   const fireScale = (t: number) => 0.55 + 0.3 * Math.sin(t * 1.7) + 0.15 * Math.sin(t * 5.3);
 
-  // ---- smoke: a wisp above the flame, only when fire AND water both flow ----
-  const smokeSprite = (() => {
-    const s = 64;
-    const c = document.createElement("canvas");
-    c.width = c.height = s;
-    const ctx = c.getContext("2d")!;
-    const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-    g.addColorStop(0, "rgba(255,255,255,0.9)");
-    g.addColorStop(0.5, "rgba(255,255,255,0.3)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, s, s);
-    return new THREE.CanvasTexture(c);
-  })();
-  const SCOUNT = 46;
-  const sox = new Float32Array(SCOUNT), soz = new Float32Array(SCOUNT);
-  const svy = new Float32Array(SCOUNT), sdx = new Float32Array(SCOUNT), sdz = new Float32Array(SCOUNT);
-  const slife = new Float32Array(SCOUNT), sphase = new Float32Array(SCOUNT);
-  const smokePos = new Float32Array(SCOUNT * 3);
-  const smokeCol = new Float32Array(SCOUNT * 3);
-  const smokeY0 = fireY0 + 5;
-  for (let n = 0; n < SCOUNT; n++) {
-    const a = Math.random() * Math.PI * 2;
-    const rr = Math.random() * 1.6;
-    sox[n] = Math.cos(a) * rr;
-    soz[n] = Math.sin(a) * rr;
-    svy[n] = 3 + Math.random() * 2;
-    sdx[n] = (Math.random() - 0.5) * 2.2;
-    sdz[n] = (Math.random() - 0.5) * 2.2;
-    slife[n] = 2.5 + Math.random() * 1.8;
-    sphase[n] = Math.random() * slife[n];
+  // ---- embers: tiny hot sparks spiralling up from the flame, cooling from
+  // yellow through orange to smoke-gray as they age (ties fire to smoke) ----
+  const EM_N = 26;
+  const emA = new Float32Array(EM_N), emR = new Float32Array(EM_N);
+  const emY = new Float32Array(EM_N), emVy = new Float32Array(EM_N);
+  const emLife = new Float32Array(EM_N), emPh = new Float32Array(EM_N);
+  const emSw = new Float32Array(EM_N), emS0 = new Float32Array(EM_N);
+  const emPos = new Float32Array(EM_N * 3);
+  const emSize = new Float32Array(EM_N);
+  const emAlpha = new Float32Array(EM_N);
+  const emCol = new Float32Array(EM_N * 3);
+  for (let n = 0; n < EM_N; n++) {
+    emA[n] = Math.random() * Math.PI * 2;
+    emR[n] = 0.2 + Math.random() * 0.9;
+    emY[n] = fireY0 + 1 + Math.random() * 4;
+    emVy[n] = 3.5 + Math.random() * 3;
+    emLife[n] = 1.1 + Math.random() * 1.3;
+    emPh[n] = Math.random() * emLife[n];
+    emSw[n] = (Math.random() - 0.5) * 3; // swirl rate
+    emS0[n] = 0.2 + Math.random() * 0.2;
+    emPos[n * 3 + 1] = -9999;
   }
-  const smokeGeo = new THREE.BufferGeometry();
-  smokeGeo.setAttribute("position", new THREE.BufferAttribute(smokePos, 3));
-  smokeGeo.setAttribute("color", new THREE.BufferAttribute(smokeCol, 3));
-  const smoke = new THREE.Points(
-    smokeGeo,
-    new THREE.PointsMaterial({
-      size: 3, map: smokeSprite, vertexColors: true, transparent: true,
-      opacity: 0, depthWrite: false, sizeAttenuation: true,
+  const emberGeo = new THREE.BufferGeometry();
+  emberGeo.setAttribute("position", new THREE.BufferAttribute(emPos, 3));
+  emberGeo.setAttribute("aSize", new THREE.BufferAttribute(emSize, 1));
+  emberGeo.setAttribute("aAlpha", new THREE.BufferAttribute(emAlpha, 1));
+  emberGeo.setAttribute("aColor", new THREE.BufferAttribute(emCol, 3));
+  const emberMat = makeParticleMaterial(dropSprite); // crisp sparks, not fuzz
+  emberMat.blending = THREE.AdditiveBlending; // sparks GLOW instead of paint
+  const embers = new THREE.Points(emberGeo, emberMat);
+  group.add(embers);
+
+  // a faint warm halo behind the flame — fake firelight, no real lighting
+  const halo = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: sprite, color: 0xff9540, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
     }),
   );
-  group.add(smoke);
+  halo.scale.set(11, 14, 1);
+  halo.position.set(0, fireY0 + 6, 0);
+  group.add(halo);
 
   // ---- feature state + music ----
   let fireOn = true;
@@ -463,6 +560,8 @@ export function createFountain(
       (fire.material as THREE.ShaderMaterial).uniforms.fireTex.value?.dispose(); // free the LUT
       if (crispPool) (pool as Reflector).dispose(); // free the planar render target
       cubeRT.dispose(); // free the cube render target
+      sprite.dispose(); // particle sprites (not reachable via material.map)
+      dropSprite.dispose();
     },
     update: (time, autoRotate, env) => {
       const dt = Math.min(0.05, Math.max(0, time - lastT));
@@ -470,7 +569,7 @@ export function createFountain(
       if (autoRotate) {
         // auto/kiosk mode orbits the camera, so it asks us to hold the group
         // still (spinGroup === false) while the rings keep turning.
-        if (env?.spinGroup !== false) group.rotation.y += 0.0001;
+        if (env?.spinGroup !== false) group.rotation.y += 0.006 * dt;
         if (!ringInit) {
           for (let t = 0; t < ringGroups.length; t++) ringNext[t] = time + 6 + Math.random() * 12;
           ringInit = true;
@@ -478,10 +577,18 @@ export function createFountain(
         for (let t = 0; t < ringGroups.length; t++) {
           // re-roll this ring's target spin now and then; ease toward it
           if (time >= ringNext[t]) { ringTarget[t] = randSpin(); ringNext[t] = time + 8 + Math.random() * 14; }
-          const step = 0.0014 * dt;
+          const step = 0.084 * dt;
           ringSpeed[t] += Math.max(-step, Math.min(step, ringTarget[t] - ringSpeed[t]));
-          ringGroups[t].rotation.y += ringSpeed[t];
+          ringGroups[t].rotation.y += ringSpeed[t] * dt;
         }
+      }
+      // particle point sizes are in world units; the shader needs the drawing-
+      // buffer height to convert them to pixels
+      if (env) {
+        const hpx = env.renderer.domElement.height;
+        jetMat.uniforms.uScale.value = hpx;
+        splashMat.uniforms.uScale.value = hpx;
+        emberMat.uniforms.uScale.value = hpx;
       }
       // animate the pool's reflective water surface
       (pool.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
@@ -493,6 +600,14 @@ export function createFountain(
         cubeCam.update(env.renderer, env.scene);
         for (const w of waterMeshes) w.visible = true;
       }
+
+      // one coherent breeze for the whole scene: direction and strength wander
+      // slowly, and the jets, smoke, embers and flame all lean with it — far
+      // more alive than each system drifting randomly on its own.
+      const windS = 0.35 + 0.35 * Math.sin(time * 0.11 + 2.1) + 0.2 * Math.sin(time * 0.031);
+      const windA = time * 0.05;
+      const wx = Math.cos(windA) * windS;
+      const wz = Math.sin(windA) * windS;
 
       // schedule the periodic rests (water rests a touch longer than fire)
       if (!restInit) {
@@ -515,26 +630,76 @@ export function createFountain(
       waterLvl = approach(waterLvl, waterOn && !waterRestUntil);
       fireLvl = approach(fireLvl, fireOn && !fireRestUntil);
 
+      // drive the pool's impact ripples from where each ring's jets land
+      // (rough analytic landing radius from the ring's current pressure)
+      if (crispPool) {
+        const u = (pool.material as THREE.ShaderMaterial).uniforms;
+        const poolR = maxR + amp + 6;
+        for (let g = 0; g < JET_RINGS.length; g++) {
+          const ri = JET_RINGS[g];
+          const p = Math.min(1, ringPressure(time, g));
+          const vy = 8 * p * waterLvl;
+          const vo = 4.75 * (1 - 0.7 * p) * waterLvl;
+          const hh = tierY[ri] + HEIGHTS[ri] / 2 - poolY;
+          const tl = (vy + Math.sqrt(vy * vy + 2 * G * hh)) / G;
+          const reach = (vo / DRAG) * (1 - Math.exp(-DRAG * tl)); // same drag as the drops
+          u.uImpactR.value.setComponent(g, Math.min(0.96, (RADII[ri] + amp + reach) / poolR));
+          u.uImpactA.value.setComponent(g, 0.12 * p * waterLvl);
+        }
+      }
+
       // water jets
       jets.visible = waterLvl > 0.001;
+      const canSplash = waterLvl > 0.25; // no splashes while the jets collapse
       if (jets.visible) {
-        (jets.material as THREE.PointsMaterial).opacity = 0.95 * Math.min(1, waterLvl * 1.6);
+        jetMat.uniforms.uOpacity.value = 0.95 * Math.min(1, waterLvl * 1.6);
         for (let n = 0; n < COUNT; n++) {
           const d = drops[n];
           const tt = (time + d.ph) % d.life;
-          const p = d.grp === 3 ? centerPressure(time) : ringPressure(time - tt, d.grp);
-          if (p < 0.04) { positions[n * 3 + 1] = -9999; continue; } // off → hidden
+          // pressure sampled at LAUNCH time (time - tt), so drops already in
+          // flight keep their arc while the nozzle pressure changes behind them
+          const p = d.grp === 3 ? centerPressure(time - tt) : ringPressure(time - tt, d.grp);
+          if (p < 0.04) { positions[n * 3 + 1] = -9999; wasAbove[n] = 0; continue; } // off → hidden
           const pn = p > 1 ? 1 : p;
           const vy = d.up * p * waterLvl; // intensity scales arc height -> collapses smoothly
           const vo = d.out * (1 - 0.7 * pn) * waterLvl; // ...and reach, so it sinks back in
-          const rad = vo * tt;
+          const rad = (vo / DRAG) * (1 - Math.exp(-DRAG * tt)); // dragged reach
+          const jit = dropJit[n] * tt * tt; // sideways scatter grows in flight
+          const wt = 0.35 * tt * tt; // wind takes hold as the drop slows
           const y = d.oy + vy * tt - 0.5 * G * tt * tt;
-          if (y < poolY - 0.3) { positions[n * 3 + 1] = -9999; continue; }
-          positions[n * 3] = d.ox + d.cx * rad;
+          const x = d.ox + d.cx * rad - d.cz * jit + wx * wt;
+          const z = d.oz + d.cz * rad + d.cx * jit + wz * wt;
+          if (y < poolY - 0.3) {
+            // the drop just crossed the pool surface → kick up a splash there
+            if (wasAbove[n] && canSplash && Math.random() < 0.3) spawnSplash(x, z);
+            wasAbove[n] = 0;
+            positions[n * 3 + 1] = -9999;
+            continue;
+          }
+          positions[n * 3] = x;
           positions[n * 3 + 1] = y;
-          positions[n * 3 + 2] = d.oz + d.cz * rad;
+          positions[n * 3 + 2] = z;
+          wasAbove[n] = 1;
         }
         jetGeo.attributes.position.needsUpdate = true;
+      }
+
+      // splashes play out even while the jets fade
+      let liveSplash = false;
+      for (let i = 0; i < SPLASH_N; i++) {
+        if (spAge[i] < spLife[i]) spAge[i] += dt;
+        const a = spAge[i];
+        if (a >= spLife[i]) { spPos[i * 3 + 1] = -9999; spAlpha[i] = 0; continue; }
+        liveSplash = true;
+        spPos[i * 3] = spX[i] + spVX[i] * a;
+        spPos[i * 3 + 1] = poolY + 0.1 + spVY[i] * a - 0.5 * G * a * a;
+        spPos[i * 3 + 2] = spZ[i] + spVZ[i] * a;
+        spAlpha[i] = 0.85 * (1 - a / spLife[i]); // fade out over its short life
+      }
+      splash.visible = liveSplash;
+      if (liveSplash) {
+        splashGeo.attributes.position.needsUpdate = true;
+        splashGeo.attributes.aAlpha.needsUpdate = true;
       }
 
       // fire is always present when toggled on (even with water); height
@@ -546,28 +711,49 @@ export function createFountain(
         const hScale = 0.85 + 0.3 * (fireScale(time) - 0.55);
         fire.scale.set(FIRE_W, FIRE_H * hScale, FIRE_W);
         fire.position.y = fireY0 + (FIRE_H * hScale) / 2;
+        // the flame leans away from the wind (rotation is about its centre, so
+        // keep the angle small enough that the base stays on the ring)
+        fire.rotation.x = wz * 0.07;
+        fire.rotation.z = -wx * 0.07;
         fire.updateFire(time, Math.min(1, fireLvl * 1.5));
       }
+      // halo breathes with the flame's flicker
+      halo.visible = fire.visible;
+      if (halo.visible)
+        (halo.material as THREE.SpriteMaterial).opacity = 0.12 * fireLvl * (0.7 + 0.6 * fireScale(time));
 
-      // smoke: only where fire AND water are both present (steam)
-      const smokeAmt = Math.min(fireLvl, waterLvl);
-      smoke.visible = smokeAmt > 0.01;
-      if (smoke.visible) {
-        (smoke.material as THREE.PointsMaterial).opacity = 0.26 * smokeAmt;
-        for (let n = 0; n < SCOUNT; n++) {
-          const tt = (time + sphase[n]) % slife[n];
-          const f = tt / slife[n];
-          smokePos[n * 3] = sox[n] + sdx[n] * tt; // drift outward as it rises
-          smokePos[n * 3 + 1] = smokeY0 + svy[n] * tt;
-          smokePos[n * 3 + 2] = soz[n] + sdz[n] * tt;
-          const grey = 0.5 + 0.3 * f; // darker puff → dissipates into the bg grey
-          smokeCol[n * 3] = grey;
-          smokeCol[n * 3 + 1] = grey;
-          smokeCol[n * 3 + 2] = grey;
+      // embers ride the flame: spiral up, cool yellow → orange → gray, fade
+      embers.visible = fireLvl > 0.01;
+      if (embers.visible) {
+        emberMat.uniforms.uOpacity.value = 0.9 * fireLvl;
+        for (let n = 0; n < EM_N; n++) {
+          const tt = (time + emPh[n]) % emLife[n];
+          const f = tt / emLife[n];
+          const ang = emA[n] + emSw[n] * tt;
+          const r = emR[n] + 0.6 * f;
+          emPos[n * 3] = Math.cos(ang) * r + wx * 1.6 * tt;
+          emPos[n * 3 + 1] = emY[n] + emVy[n] * tt;
+          emPos[n * 3 + 2] = Math.sin(ang) * r + wz * 1.6 * tt;
+          if (f < 0.45) {
+            const k = f / 0.45; // yellow → orange
+            emCol[n * 3] = 1 - 0.02 * k;
+            emCol[n * 3 + 1] = 0.9 - 0.42 * k;
+            emCol[n * 3 + 2] = 0.35 - 0.22 * k;
+          } else {
+            const k = (f - 0.45) / 0.55; // orange → smoke gray
+            emCol[n * 3] = 0.98 - 0.43 * k;
+            emCol[n * 3 + 1] = 0.48 + 0.07 * k;
+            emCol[n * 3 + 2] = 0.13 + 0.42 * k;
+          }
+          emAlpha[n] = Math.min(1, f / 0.12) * Math.max(0, 1 - Math.max(0, (f - 0.55) / 0.45));
+          emSize[n] = emS0[n] * (1 - 0.4 * f); // sparks shrink as they cool
         }
-        smokeGeo.attributes.position.needsUpdate = true;
-        smokeGeo.attributes.color.needsUpdate = true;
+        emberGeo.attributes.position.needsUpdate = true;
+        emberGeo.attributes.aColor.needsUpdate = true;
+        emberGeo.attributes.aAlpha.needsUpdate = true;
+        emberGeo.attributes.aSize.needsUpdate = true;
       }
+
     },
   };
 }

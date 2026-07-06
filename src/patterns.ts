@@ -271,12 +271,47 @@ function drawHeartFace(ctx: Ctx, mono: boolean) {
     }
 }
 
+// subtle paper grain overlaid on every composition, so panels read as matte
+// painted board rather than perfectly synthetic fills (kept faint on purpose)
+const grainTile = (() => {
+  let tile: HTMLCanvasElement | null = null;
+  return () => {
+    if (tile) return tile;
+    tile = document.createElement("canvas");
+    const S = 64;
+    tile.width = tile.height = S;
+    const gc = tile.getContext("2d")!;
+    const img = gc.createImageData(S, S);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = 118 + Math.random() * 20; // near mid-gray → 'overlay' stays subtle
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    gc.putImageData(img, 0, 0);
+    return tile;
+  };
+})();
+function addGrain(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext("2d")!;
+  ctx.save();
+  ctx.globalAlpha = 0.14;
+  ctx.globalCompositeOperation = "overlay";
+  ctx.fillStyle = ctx.createPattern(grainTile(), "repeat")!;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
 function toTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  addGrain(canvas);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.generateMipmaps = false;
-  tex.minFilter = THREE.LinearFilter;
+  // mipmaps + anisotropy: without them the 1–2-cell stripes/checkers sit at
+  // the sampling limit and crawl/moiré as the rings spin at a distance;
+  // anisotropy keeps them crisp at glancing angles (three clamps to GPU max).
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 8;
   return tex;
 }
 

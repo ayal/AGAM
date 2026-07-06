@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TrackballControls } from "three/examples/jsm/controls/TrackballControls.js";
 import type { Creation } from "./creation";
 import { createAgamograph } from "./creations/agamograph";
 import { createFountain, rollFountainModes, type FountainModes } from "./creations/fountain";
@@ -32,12 +33,16 @@ if (!AUTO) {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    trackball.handleResize(); // trackball caches the canvas rect
   });
 }
 
-// OrbitControls: stays upright (no roll, polar angle clamped), so the camera
-// can't tumble into orientations the auto-glide can't represent — which makes
-// resuming the glide smooth by construction. 1 finger orbits, pinch zooms.
+// Two control schemes, one per creation:
+//  • fountain → OrbitControls, upright + clamped (polar angle & distance), so
+//    the camera can't tumble into orientations the auto-glide can't represent
+//    — which makes resuming the glide smooth by construction.
+//  • agamograph → TrackballControls: no glide to hand back to, so the camera
+//    is fully free — tumble over the poles, roll, pan, zoom right in.
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -47,6 +52,23 @@ controls.maxPolarAngle = 1.95; // ~112°: can look up from below, but not under 
 controls.minDistance = 32;
 controls.maxDistance = 320;
 controls.enabled = !AUTO; // kiosk mode is a locked display — ignore all input
+
+const trackball = new TrackballControls(camera, renderer.domElement);
+trackball.rotateSpeed = 3;
+trackball.zoomSpeed = 1.4;
+trackball.panSpeed = 0.6;
+trackball.dynamicDampingFactor = 0.12;
+trackball.minDistance = 6;
+trackball.maxDistance = 400;
+trackball.enabled = false;
+
+// exactly one scheme listens at a time (both are attached to the same canvas)
+function applyControlMode(name: string) {
+  const free = name === "surface" && !AUTO;
+  trackball.enabled = free;
+  controls.enabled = !free && !AUTO;
+  if (free) trackball.target.set(0, 0, 0);
+}
 
 // disable double-click / double-tap to zoom
 renderer.domElement.addEventListener("dblclick", (e) => e.preventDefault());
@@ -177,6 +199,7 @@ let isManual = false; // regular mode: user has grabbed camera control
 let seedGlide: (() => void) | null = null; // (re)seed the glide orbit from the live camera
 let checkIdle: ((t: number) => void) | null = null; // regular mode: resume glide after idle
 let frameEl: HTMLElement | null = null; // kiosk presentation frame (null in regular mode)
+let uiFade: ((swap: () => void) => void) | null = null; // crossfade for UI-triggered re-renders
 let spinBtn: (HTMLButtonElement & { setOn?: (v: boolean) => void }) | null = null;
 let fountainModes: FountainModes = THUMB ? { crisp: true } : rollFountainModes(); // kept on recolor, re-rolled on full render
 
@@ -199,6 +222,10 @@ function setSpin(on: boolean) {
 
 const TOGGLE_ICONS: Record<string, string> = { fire: "flame", water: "droplets", sound: "sound" };
 
+// wrap a rebuild in the crossfade when it's available (it's created alongside
+// the glide loop; before that, or if a fade is already running, swap directly)
+const fadeTo = (swap: () => void) => (uiFade ? uiFade(swap) : swap());
+
 function buildUI(name: string) {
   bar.replaceChildren();
   for (const sel of ["surface", "fountain"]) {
@@ -212,14 +239,15 @@ function buildUI(name: string) {
       styleIcon(b, active);
     }
     // clicking the current creation re-rolls patterns+colors but keeps the modes
-    // & camera (soft); clicking the other one switches (full render).
-    b.onclick = () => setCreation(sel, sel === currentName);
+    // & camera (soft); clicking the other one switches (full render). Both go
+    // through the crossfade so the rebuild reads as a beat, not a glitch.
+    b.onclick = () => fadeTo(() => setCreation(sel, sel === currentName));
     bar.appendChild(b);
   }
   // refresh = a full new render (new modes, colors, patterns, reset camera)
   const refresh = iconBtn("refresh", "new render");
   styleIcon(refresh, false);
-  refresh.onclick = () => setCreation(name, false);
+  refresh.onclick = () => fadeTo(() => setCreation(name, false));
   bar.appendChild(refresh);
   // link into the unattended kiosk / auto mode
   const auto = document.createElement("a");
@@ -270,6 +298,7 @@ function setCreation(name: string, soft = false, keepCamera = false) {
     controls.update();
   }
   currentName = name;
+  applyControlMode(name);
   buildUI(name);
   // if the fountain will be auto-gliding, (re)seed the glide from this view
   if (!soft && !THUMB && !isManual && name === "fountain") seedGlide?.();
@@ -277,7 +306,8 @@ function setCreation(name: string, soft = false, keepCamera = false) {
 
 // fresh load always starts on the fountain
 setCreation("fountain");
-const clock = new THREE.Clock();
+const timer = new THREE.Timer(); // (Clock is deprecated) updated once per frame
+let elapsed = 0; // last frame's elapsed time, for event handlers between frames
 
 // ---------------------------------------------------------------------------
 // Auto / kiosk mode (?auto): an unattended big-screen attract loop.
@@ -500,6 +530,9 @@ if (AUTO) {
   const crossfade = (swap: () => void) => {
     if (swapping) return;
     swapping = true;
+    // dip through the CURRENT clear colour (gray for the fountain, cream for
+    // the agamograph) so the fade never flashes a foreign tone
+    fader.style.background = "#" + renderer.getClearColor(new THREE.Color()).getHexString();
     fader.style.opacity = "1";
     setTimeout(() => {
       swap();
@@ -507,14 +540,27 @@ if (AUTO) {
       setTimeout(() => { swapping = false; }, 300);
     }, 300);
   };
+  uiFade = crossfade; // toolbar re-render clicks share the same dip
 
   let nextSoft = rand(30, 45); // frequent recolour + new patterns (keeps camera)
   let nextFull = rand(180, 300); // rarer full re-roll
+  let holdDir = 1; // drift direction while holding (continues the last leg)
+  let lastNow = 0;
 
   autoTick = (now: number) => {
+    const dtg = Math.min(0.1, Math.max(0, now - lastNow));
+    lastNow = now;
     if (now >= legStart + legDur) {
-      if (!holding) { orbit.az = to.az; orbit.el = to.el; orbit.dist = to.dist; orbit.lookY = to.lookY; orbit.roll = to.roll; holding = true; holdUntil = now + rand(1.5, 3); }
-      else if (now >= holdUntil) pickLeg(now);
+      if (!holding) {
+        orbit.az = to.az; orbit.el = to.el; orbit.dist = to.dist; orbit.lookY = to.lookY; orbit.roll = to.roll;
+        holdDir = Math.sign(to.az - from.az) || 1;
+        holding = true;
+        holdUntil = now + rand(0.6, 4.5); // varied beats: quick glances & long looks
+      } else if (now >= holdUntil) {
+        pickLeg(now);
+      } else {
+        orbit.az += holdDir * 0.7 * DEG * dtg; // whisper of drift — never a dead stop
+      }
     } else {
       const t = smooth((now - legStart) / legDur);
       orbit.az = lerpN(from.az, to.az, t);
@@ -542,7 +588,7 @@ if (AUTO) {
     const IDLE = 22; // seconds after the last interaction before the glide resumes
     let lastInteract = 0;
     let dragging = false;
-    const mark = () => { lastInteract = clock.getElapsedTime(); };
+    const mark = () => { lastInteract = elapsed; };
     const startManual = () => { isManual = true; controls.target.set(0, orbit.lookY, 0); mark(); };
     const el = renderer.domElement;
     el.addEventListener("pointerdown", () => { dragging = true; startManual(); });
@@ -560,12 +606,14 @@ if (AUTO) {
 let wasGliding = false;
 const animate = () => {
   requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
+  timer.update();
+  const t = (elapsed = timer.getElapsed());
   // glide only governs the fountain, and only when the user isn't in control
   const gliding = !isManual && currentName === "fountain";
   if (gliding && !wasGliding) seedGlide?.(); // entering the glide → seed from current view
   if (gliding) autoTick?.(t);
-  else controls.update(); // manual control (or the agamograph "surface" view)
+  else if (trackball.enabled) trackball.update(); // free-tumble agamograph
+  else controls.update(); // manual fountain control
   checkIdle?.(t);
   current?.update?.(t, autoRotate, { renderer, scene, spinGroup: !gliding });
   renderer.render(scene, camera);
