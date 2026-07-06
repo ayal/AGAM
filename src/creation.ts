@@ -31,6 +31,7 @@ export interface Creation {
   toggles?: Toggle[]; // optional feature toggles (e.g. fire / water / music)
   status?: () => string;    // optional one-line HUD (e.g. the simulated clock)
   dayCount?: () => number;  // increments each simulated midnight — used to schedule pattern changes
+  recolor?: () => void;     // morph to fresh colors/patterns IN PLACE (no rebuild, no fade)
   dispose?: () => void;     // tear down any DOM/listeners it added
 }
 

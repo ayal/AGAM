@@ -13,6 +13,8 @@ const scene = new THREE.Scene();
 // 52° vertical FOV everywhere (kiosk used this already): a wide 75° exaggerated
 // near-field perspective, ballooning the pool's reflection in normal mode.
 const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight);
+camera.far = 4000; // default 2000 would clip the far side of the enlarged sky dome when zoomed way out
+camera.updateProjectionMatrix();
 
 // ?auto → unattended kiosk mode for a big screen: no UI, locked input, the
 // camera glides on its own, and the render re-rolls itself over time. (See the
@@ -50,7 +52,7 @@ controls.enablePan = false; // keep the orbit centred (clean glide handoff)
 controls.minPolarAngle = 0.18; // ~10° from top (matches the glide's aerial)
 controls.maxPolarAngle = 1.95; // ~112°: can look up from below, but not under the pool
 controls.minDistance = 32;
-controls.maxDistance = 320;
+controls.maxDistance = 1000; // deep-space pull-back, still inside the sky dome (r≈1120)
 controls.enabled = !AUTO; // kiosk mode is a locked display — ignore all input
 
 const trackball = new TrackballControls(camera, renderer.domElement);
@@ -555,28 +557,6 @@ if (AUTO) {
   // which was written when a day lasted 55s (time has been doubled since).
   const PATTERN_DAYS = 4;
   let lastDayCount = 0;
-  // A slow, dreamy dip for the midnight pattern change — the night deepens,
-  // the world sleeps, and it wakes with fresh colours. Not a glitchy flash:
-  // the dip is into the night sky's own near-black, over ~2.5s each way.
-  const nightCrossfade = (swap: () => void) => {
-    const nf = document.createElement("div");
-    nf.style.cssText = frameEl
-      ? "position:absolute;inset:0;background:#070a12;opacity:0;pointer-events:none;z-index:2;transition:opacity 2500ms ease-in-out;"
-      : "position:fixed;inset:0;background:#070a12;opacity:0;pointer-events:none;z-index:9998;transition:opacity 2500ms ease-in-out;";
-    (frameEl ?? document.body).appendChild(nf);
-    // force a style flush before flipping opacity — set in the same task as
-    // the append, the transition never runs and the screen SNAPS to black
-    void nf.offsetHeight;
-    nf.style.opacity = "1";
-    setTimeout(() => {
-      swap();
-      // brief hold in the dark so the rebuild hitch hides inside it
-      setTimeout(() => {
-        nf.style.opacity = "0";
-        setTimeout(() => nf.remove(), 2600);
-      }, 400);
-    }, 2600);
-  };
 
   autoTick = (now: number) => {
     const dtg = Math.min(0.1, Math.max(0, now - lastNow));
@@ -602,16 +582,13 @@ if (AUTO) {
     }
     applyOrbit();
 
-    // Pattern change: rebuild the fountain at midnight every PATTERN_DAYS
-    // simulated days. dayCount increments each midnight in fountain.ts and
-    // RESTARTS AT 0 on rebuild, so lastDayCount must reset with it.
+    // Pattern change every PATTERN_DAYS simulated midnights: the new patterns
+    // morph INTO the live panels (fountain.recolor) — no rebuild, no overlay,
+    // and therefore no fade to black. dayCount never resets (nothing rebuilds).
     const dc = current?.dayCount?.() ?? 0;
     if (dc - lastDayCount >= PATTERN_DAYS) {
       lastDayCount = dc;
-      nightCrossfade(() => {
-        setCreation("fountain", true);
-        lastDayCount = 0;
-      });
+      current?.recolor?.();
     }
   };
 

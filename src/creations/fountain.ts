@@ -76,12 +76,19 @@ export function createFountain(
   // horizon), the fill light turns into cool moonlight after dark, and the
   // background + hemisphere dim through a warm dusk into blue-gray night.
   const DAY_CYCLE = 27; // seconds for one full day + night
-  const SKY_R = 430;
+  // Celestial orbit radius. MUST clear the planet sphere: the orbit circles
+  // the ORIGIN (fountain), but the planet (r=320) is centered ~330 below — at
+  // 430 the arc's low point passed within ~230 of the planet's center, so the
+  // sun/moon visibly tunneled THROUGH the ground on wide shots. At 620 the
+  // closest approach is ~383, safely outside the sphere plus sprite size.
+  const SKY_R = 620;
   // Realistic diurnal arc for the fountain's real home — Dizengoff Square,
   // ~32°N: the sun rises due east, crosses the SOUTHERN sky culminating at
   // ~58°, and sets due west. Scene axes: +x east, +y up, +z south.
   const LAT = (32 * Math.PI) / 180;
-  // Per-pixel sphere rendering: limb darkening gives a clear 3D-orb look.
+  // Per-pixel sphere rendering: limb darkening + granulation blotches placed
+  // on the 3D sphere surface (chord distance), so features FORESHORTEN toward
+  // the limb — the strongest visual cue that this is a ball, not a disc.
   // The material.color tint (golden at horizon, white at zenith) multiplies in.
   const makeSunSprite = (size: number) => {
     const s = 128;
@@ -89,6 +96,17 @@ export function createFountain(
     c.width = c.height = s;
     const ctx = c.getContext("2d")!;
     const img = ctx.createImageData(s, s);
+    // random granulation blotches on the visible hemisphere (3D unit points)
+    const spots = Array.from({ length: 26 }, () => {
+      const az = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random());
+      const x = rr * Math.cos(az), y = rr * Math.sin(az);
+      return {
+        x, y, z: Math.sqrt(Math.max(0, 1 - x * x - y * y)),
+        r: 0.06 + Math.random() * 0.17,  // blotch radius (chord units)
+        d: 0.05 + Math.random() * 0.09,  // dimming depth
+      };
+    });
     for (let py = 0; py < s; py++) {
       for (let px = 0; px < s; px++) {
         const nx = (px / (s - 1)) * 2 - 1;
@@ -102,9 +120,18 @@ export function createFountain(
         // made the disc translucent and the sky bled through the whole orb
         const limb = 0.55 + 0.45 * nz;
         const edge = Math.min(1, (1 - r) * 22); // crisp disc boundary
-        img.data[o]     = Math.round(255 * limb);
-        img.data[o + 1] = Math.round((252 + 3 * nz) * limb);
-        img.data[o + 2] = Math.round((210 + 45 * nz) * limb);
+        // 3D chord distance to each blotch — near the limb the same blotch
+        // spans fewer pixels, giving true spherical foreshortening
+        let shade = 1;
+        for (const sp of spots) {
+          const dd = Math.hypot(nx - sp.x, ny - sp.y, nz - sp.z);
+          if (dd < sp.r) shade -= sp.d * (1 - dd / sp.r);
+        }
+        // darker granules go slightly orange (blue drops fastest) like real
+        // solar surface texture
+        img.data[o]     = Math.round(255 * limb * Math.pow(shade, 0.4));
+        img.data[o + 1] = Math.round((252 + 3 * nz) * limb * Math.pow(shade, 0.8));
+        img.data[o + 2] = Math.round((210 + 45 * nz) * limb * Math.pow(shade, 1.6));
         img.data[o + 3] = Math.round(255 * edge); // fully opaque inside the disc
       }
     }
@@ -123,7 +150,7 @@ export function createFountain(
     spr.scale.set(size, size, 1);
     return spr;
   };
-  const sunDisc = makeSunSprite(34);
+  const sunDisc = makeSunSprite(50); // scaled with SKY_R so its apparent size is unchanged
   // A moon with a real phase: per-pixel sphere shading against the sun
   // direction draws the curved terminator, random maria mottle the surface,
   // and the dark limb keeps a whisper of earthshine. E = elongation from the
@@ -134,11 +161,24 @@ export function createFountain(
     c.width = c.height = s;
     const ctx = c.getContext("2d")!;
     const img = ctx.createImageData(s, s);
-    const maria = Array.from({ length: 7 }, () => ({
-      x: (Math.random() * 2 - 1) * 0.55,
-      y: (Math.random() * 2 - 1) * 0.55,
-      r: 0.15 + Math.random() * 0.22,
-      d: 0.1 + Math.random() * 0.16,
+    // maria + craters live on the 3D sphere surface (unit points, chord
+    // distance) so they foreshorten toward the limb — reads as a ball
+    const onSphere = (spread: number) => {
+      const az = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * spread;
+      const x = rr * Math.cos(az), y = rr * Math.sin(az);
+      return { x, y, z: Math.sqrt(Math.max(0, 1 - x * x - y * y)) };
+    };
+    const maria = Array.from({ length: 10 }, () => ({
+      ...onSphere(0.85),
+      r: 0.16 + Math.random() * 0.26,
+      d: 0.12 + Math.random() * 0.18,
+    }));
+    // small bright craters with a darker floor — crisp detail the eye reads
+    // as surface, not noise
+    const craters = Array.from({ length: 9 }, () => ({
+      ...onSphere(0.9),
+      r: 0.035 + Math.random() * 0.07,
     }));
     const sx = Math.sin(E), sz = -Math.cos(E); // sun direction in moon-face space
     for (let py = 0; py < s; py++) {
@@ -152,10 +192,18 @@ export function createFountain(
         const lit = Math.min(1, Math.max(0, 0.5 + diff / 0.16)); // soft terminator
         let shade = 1;
         for (const m of maria) {
-          const dd = Math.hypot(nx - m.x, ny - m.y);
+          const dd = Math.hypot(nx - m.x, ny - m.y, nz - m.z);
           if (dd < m.r) shade -= m.d * (1 - dd / m.r);
         }
-        const L = lit * shade * (0.55 + 0.45 * nz); // + limb darkening
+        for (const cr of craters) {
+          const dd = Math.hypot(nx - cr.x, ny - cr.y, nz - cr.z);
+          if (dd < cr.r) {
+            const t = dd / cr.r;
+            // bright rim (outer third), slightly dark floor
+            shade += t > 0.66 ? 0.22 * (t - 0.66) / 0.34 : -0.1 * (1 - t / 0.66);
+          }
+        }
+        const L = lit * Math.max(0, shade) * (0.55 + 0.45 * nz); // + limb darkening
         const o = (py * s + px) * 4;
         img.data[o] = Math.min(255, 235 * L + 26);
         img.data[o + 1] = Math.min(255, 238 * L + 30);
@@ -170,7 +218,7 @@ export function createFountain(
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
       map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false,
     }));
-    spr.scale.set(26, 26, 1);
+    spr.scale.set(38, 38, 1); // scaled with SKY_R so its apparent size is unchanged
     return spr;
   };
   // always a full moon (E = π, opposite the sun — it rises at sunset): partial
@@ -269,7 +317,7 @@ export function createFountain(
       }
     `,
   });
-  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(SKY_R * 1.7, 48, 32), skyMat);
+  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(SKY_R * 2.6, 48, 32), skyMat);
   skyDome.renderOrder = -1; // paint first; everything else draws over it
   skyDome.frustumCulled = false; // the camera lives inside the sphere
   group.add(skyDome);
@@ -479,6 +527,15 @@ export function createFountain(
 
   // ---- rings (each spins on its own, alternating directions) ----
   const ringGroups: THREE.Group[] = [];
+  // Handles for the in-place pattern morph (recolor without any rebuild or
+  // fade-to-black): the panel patterns are canvas textures, so new patterns
+  // can be cross-blended INTO the live canvases while everything keeps moving.
+  type MorphRing = {
+    P: number; rows: number; N: number;
+    matA: THREE.MeshLambertMaterial; matB: THREE.MeshLambertMaterial;
+    capGeos: THREE.BufferGeometry[];
+  };
+  const morphRings: MorphRing[] = [];
   for (let t = 0; t < TIERS; t++) {
     const ring = new THREE.Group();
     const R = RADII[t];
@@ -563,11 +620,14 @@ export function createFountain(
       geo.computeVertexNormals(); // caps are now lit (Lambert needs normals)
       return geo;
     };
-    ring.add(new THREE.Mesh(buildCap(y + h / 2), capMat));
-    ring.add(new THREE.Mesh(buildCap(y - h / 2), capMat));
+    const capTop = buildCap(y + h / 2);
+    const capBot = buildCap(y - h / 2);
+    ring.add(new THREE.Mesh(capTop, capMat));
+    ring.add(new THREE.Mesh(capBot, capMat));
 
     group.add(ring);
     ringGroups.push(ring);
+    morphRings.push({ P, rows, N, matA, matB, capGeos: [capTop, capBot] });
   }
   // per-ring spin speeds: alternating directions, varied magnitude (gentle)
   // each ring spins independently and re-rolls its own direction + gentle speed
@@ -579,6 +639,36 @@ export function createFountain(
   const ringTarget = ringSpeed.slice();        // speed it's easing toward
   const ringNext: number[] = ringGroups.map(() => 0); // time of next re-roll
   let ringInit = false;
+
+  // ---- in-place pattern morph (the midnight "recolor" WITHOUT a fade) ----
+  // New patterns are blended into the live panel canvases and cap vertex
+  // colors over several seconds — no rebuild, no overlay, no dip to black.
+  const cloneCanvas = (src: HTMLCanvasElement) => {
+    const c = document.createElement("canvas");
+    c.width = src.width;
+    c.height = src.height;
+    c.getContext("2d")!.drawImage(src, 0, 0);
+    return c;
+  };
+  // same rib→color mapping as buildCap: segment k takes column floor(k/2) of
+  // strip A (even k) or B (odd k), six vertices per segment
+  const capColorArray = (colorsA: number[], colorsB: number[], N: number) => {
+    const cols: number[] = [];
+    for (let k = 0; k < N; k++) {
+      const c = (k % 2 === 0 ? colorsA : colorsB)[Math.floor(k / 2)] ?? 0x888888;
+      const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
+      for (let v = 0; v < 6; v++) cols.push(r, g, b);
+    }
+    return new Float32Array(cols);
+  };
+  type Morph = {
+    t0: number;
+    dur: number;
+    items: { mat: THREE.MeshLambertMaterial; from: HTMLCanvasElement; to: HTMLCanvasElement; live: HTMLCanvasElement }[];
+    caps: { geo: THREE.BufferGeometry; from: Float32Array; to: Float32Array }[];
+  };
+  let morph: Morph | null = null;
+  let pendingRecolor = false; // set by recolor(), consumed by update() (which knows `time`)
 
   // ---- water jets: arcs from the top 3 rings + a center jet on the topmost,
   // all with changing "pressure" (parabola size). ----
@@ -811,6 +901,9 @@ export function createFountain(
       return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
     },
     dayCount: () => midnightCount,
+    // the midnight pattern change: new patterns breathe into the live panels
+    // over ~6s — no rebuild, no fade to black
+    recolor: () => { pendingRecolor = true; },
     toggles: [
       { label: "fire", initial: true, set: (on) => { fireOn = on; } },
       { label: "water", initial: true, set: (on) => { waterOn = on; } },
@@ -849,6 +942,52 @@ export function createFountain(
         emberMat.uniforms.uScale.value = hpx;
       }
 
+      // ---- in-place pattern morph: start ----
+      if (pendingRecolor) {
+        pendingRecolor = false;
+        const newMono = Math.random() < 0.25; // same B&W odds as a fresh build
+        const items: Morph["items"] = [];
+        const caps: Morph["caps"] = [];
+        for (const r of morphRings) {
+          const nA = makeStrip(r.P, r.rows, newMono, Math.random() < 0.6);
+          const nB = makeStrip(r.P, r.rows, newMono, Math.random() < 0.6);
+          for (const [mat, ns] of [[r.matA, nA], [r.matB, nB]] as const) {
+            const live = (mat.map as THREE.CanvasTexture).image as HTMLCanvasElement;
+            items.push({ mat, from: cloneCanvas(live), to: ns.texture.image as HTMLCanvasElement, live });
+          }
+          const to = capColorArray(nA.colors, nB.colors, r.N);
+          for (const geo of r.capGeos) {
+            const attr = geo.getAttribute("color") as THREE.BufferAttribute;
+            caps.push({ geo, from: Float32Array.from(attr.array as Float32Array), to });
+          }
+        }
+        morph = { t0: time, dur: 6, items, caps };
+        // fresh drift for the new patterns
+        for (let i = 0; i < ringTarget.length; i++) ringTarget[i] = randSpin();
+      }
+      // ---- in-place pattern morph: advance (blend new patterns into the
+      // live canvases + cap vertex colors; nothing rebuilds, nothing fades) ----
+      if (morph) {
+        const k = Math.min(1, (time - morph.t0) / morph.dur);
+        const e = k * k * (3 - 2 * k); // smoothstep — eases both ends
+        for (const it of morph.items) {
+          const ctx = it.live.getContext("2d")!;
+          ctx.globalAlpha = 1;
+          ctx.drawImage(it.from, 0, 0);
+          ctx.globalAlpha = e;
+          ctx.drawImage(it.to, 0, 0);
+          ctx.globalAlpha = 1;
+          (it.mat.map as THREE.CanvasTexture).needsUpdate = true;
+        }
+        for (const cp of morph.caps) {
+          const attr = cp.geo.getAttribute("color") as THREE.BufferAttribute;
+          const arr = attr.array as Float32Array;
+          for (let i = 0; i < arr.length; i++) arr[i] = cp.from[i] + (cp.to[i] - cp.from[i]) * e;
+          attr.needsUpdate = true;
+        }
+        if (k >= 1) morph = null;
+      }
+
       // ---- fast day/night: the sun & moon arc across the sky ----
       const th = (time / DAY_CYCLE) * Math.PI * 2 + 1.1; // t=0 → mid-morning
       // hour angle: 0 at solar noon, ±π at midnight (equinox declination)
@@ -873,16 +1012,16 @@ export function createFountain(
       const duskL = Math.max(0, 1 - Math.abs(se) / 0.25); // sun near the horizon
       const sunMat = sunDisc.material as THREE.SpriteMaterial;
       const moonMat = moonDisc.material as THREE.SpriteMaterial;
-      // NO opacity fade on setting: the sprites depth-test against the opaque
-      // planet sphere, so the limb clips them per-pixel — a setting sun is
-      // progressively bitten by the curved horizon, exactly like the real thing.
-      // (The moon's opacity only tracks the day-sky washout, never the horizon.)
+      // NO opacity modulation on either body, EVER. Any time-of-day opacity is
+      // a trap: the full moon sets exactly at sunrise, so a "day washout" fade
+      // fires during every single moonset and reads as a horizon fade. The
+      // planet's limb clipping the sprites via the depth buffer is the ONLY
+      // thing that hides them.
       sunMat.opacity = 1;
-      // Moon: SOLID at night — and it must saturate to 1 quickly, because the
-      // full moon always rises at sunset / sets at sunrise, i.e. exactly in the
-      // middle of the day↔night blend. A linear blend left every rise/set at
-      // ~0.6 opacity, which read as a ghost moon. Only the day sky washes it out.
-      moonMat.opacity = Math.min(1, 0.3 + 0.9 * nightL);
+      moonMat.opacity = 1;
+      // slow self-spin sells the orb (the surface features visibly rotate)
+      sunMat.rotation = time * 0.02;
+      moonMat.rotation = -time * 0.013;
       // moonLIGHT on the fountain follows the moon's true altitude — the light
       // should die as the moon drops below the fountain's own horizon,
       // independent of where the viewing camera happens to be
@@ -890,7 +1029,7 @@ export function createFountain(
       // golden hour: near the horizon the sun swells, reddens, and washes the
       // whole sky (hemisphere + background) in amber
       sunMat.color.lerpColors(SUN_LOW, SUN_HIGH, Math.min(1, Math.max(0, se / 0.45)));
-      const sunSize = 34 * (1 + 0.1 * duskL);
+      const sunSize = 50 * (1 + 0.1 * duskL);
       sunDisc.scale.set(sunSize, sunSize, 1);
       // the key light IS the sun; after dark the fill light becomes moonlight.
       // Key is deliberately strong relative to hemi so the sun's DIRECTION is
