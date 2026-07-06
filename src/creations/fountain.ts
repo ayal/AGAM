@@ -256,6 +256,12 @@ export function createFountain(
             sky += smoothstep(0.10, 0.0, sd) * tw * uNight * (0.5 + 0.5 * hs) * vec3(0.85, 0.88, 0.95);
           }
         }
+        // dither: ±1 LSB of screen-space noise breaks up 8-bit banding in the
+        // smooth gradient — without it, dark dusk/night skies show visible
+        // stepped bands (worst on OLED, and AirPlay compression amplifies them
+        // into crawling blocks)
+        float dn = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        sky += (dn - 0.5) / 160.0;
         gl_FragColor = vec4(sky, 1.0);
       }
     `,
@@ -272,6 +278,9 @@ export function createFountain(
   const planetMat = new THREE.MeshLambertMaterial({
     color: 0x8a8580, // warm concrete gray
     polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+    // the planet is one huge smoothly-lit surface — without dithering its
+    // day/night shading bands visibly on OLED screens
+    dithering: true,
   });
   // high tessellation: the far "planet shot" puts the whole silhouette on
   // screen, and at 72 segments the limb visibly faceted (~5° per edge)
@@ -288,6 +297,7 @@ export function createFountain(
     opacity: 0.55,
     depthWrite: false,
     side: THREE.DoubleSide,
+    dithering: true, // smooth curved drums band in low light without it
   });
 
   // Cube map for the pool's NON-crisp reflection mode (captured from the
@@ -340,7 +350,10 @@ export function createFountain(
         vec3 R = reflect(V, N);
         vec3 env = textureCube(envMap, R).rgb;
         float fres = 0.5 + 0.18 * pow(1.0 - abs(dot(N, -V)), 3.0); // stronger, more visible
-        gl_FragColor = vec4(mix(water, env, fres), 1.0);
+        vec3 col = mix(water, env, fres);
+        // anti-banding dither (dark water gradients step visibly on OLED)
+        col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 160.0;
+        gl_FragColor = vec4(col, 1.0);
       }
     `,
   });
@@ -440,7 +453,10 @@ export function createFountain(
           // contact shading: the water darkens toward the tower base, which
           // grounds the sculpture in the pool instead of floating on a disc
           float ao = 1.0 - 0.22 * smoothstep(0.95, 0.55, dc);
-          gl_FragColor = vec4(mix(water, refl.rgb, fres) * ao, 1.0);
+          vec3 col = mix(water, refl.rgb, fres) * ao;
+          // anti-banding dither (dark water gradients step visibly on OLED)
+          col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 160.0;
+          gl_FragColor = vec4(col, 1.0);
         }
       `,
     };
