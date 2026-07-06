@@ -82,6 +82,13 @@ const THUMB = new URLSearchParams(location.search).has("thumb");
 const bar = document.createElement("div");
 bar.id = "ui-bar";
 bar.style.cssText = "position:fixed;top:14px;left:14px;z-index:9999;display:flex;gap:4px;align-items:center;";
+// HUD (bottom-left): a creation's one-line status — the fountain's simulated
+// clock. Filled per-frame in the render loop from current.status().
+const hud = document.createElement("div");
+hud.style.cssText =
+  "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.09em;" +
+  "color:#4e5154;opacity:.85;font-variant-numeric:tabular-nums;" +
+  "pointer-events:none;text-shadow:0 1px 2px rgba(255,255,255,.2);";
 if (!THUMB && !AUTO) {
   document.body.appendChild(bar);
   const credit = makeCredit(); // bottom-right homage in regular mode
@@ -90,6 +97,11 @@ if (!THUMB && !AUTO) {
   credit.style.bottom = "12px";
   credit.style.zIndex = "9999";
   document.body.appendChild(credit);
+  hud.style.position = "fixed";
+  hud.style.left = "14px";
+  hud.style.bottom = "12px";
+  hud.style.zIndex = "9999";
+  document.body.appendChild(hud);
 }
 
 // ---- inline stroke icons (Lucide-style; no icon font to load) -------------
@@ -354,6 +366,12 @@ if (AUTO) {
   credit.style.bottom = "3%";
   credit.style.zIndex = "3";
   frame.appendChild(credit);
+  // the clock sits bottom-left of the frame, mirroring the credit
+  hud.style.position = "absolute";
+  hud.style.left = "2.4%";
+  hud.style.bottom = "3%";
+  hud.style.zIndex = "3";
+  frame.appendChild(hud);
   surround.appendChild(frame);
   document.body.appendChild(surround);
   frameEl = frame; // the shared glide loop fades re-renders inside this frame
@@ -383,6 +401,7 @@ if (AUTO) {
     // cap the title by width too, so it never overflows a narrow frame
     title.style.fontSize = `${Math.max(11, Math.min(Math.round(h * 0.034), Math.round(w * 0.045)))}px`;
     credit.style.fontSize = `${Math.max(11, Math.round(Math.min(h * 0.014, w * 0.022)))}px`;
+    hud.style.fontSize = credit.style.fontSize;
   };
   frameLayout();
   window.addEventListener("resize", frameLayout);
@@ -485,12 +504,16 @@ if (AUTO) {
     let el: number, dist: number, lookY: number, dur: number;
     if (r < 0.12) {
       el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11); // push-in
-    } else if (r < 0.32) {
+    } else if (r < 0.3) {
       el = rand(48 * DEG, 76 * DEG); dist = rand(78, 116); lookY = rand(-3, 2); dur = rand(7, 11); // rise-above
-    } else if (r < 0.72) {
+    } else if (r < 0.66) {
       el = rand(-18 * DEG, 6 * DEG); dist = rand(54, 78); lookY = rand(3, 11); dur = rand(11, 17); // from-below (dominant)
-    } else {
+    } else if (r < 0.84) {
       el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 14); // mid orbit
+    } else {
+      // wide establishing shot: pull right back and aim a little upward, so
+      // the sky — sun, moon, high jet surges — shares the frame with the tower
+      el = rand(2 * DEG, 20 * DEG); dist = rand(150, 250); lookY = rand(8, 24); dur = rand(12, 18);
     }
     el = Math.max(el, Math.asin(Y_FLOOR / dist)); // never below the pool
     if (big) dur = Math.max(dur, rand(20, 30));
@@ -604,10 +627,13 @@ if (AUTO) {
 // Render loop
 // ---------------------------------------------------------------------------
 let wasGliding = false;
+let lastHud = "";
 const animate = () => {
   requestAnimationFrame(animate);
   timer.update();
   const t = (elapsed = timer.getElapsed());
+  const hudText = current?.status?.() ?? "";
+  if (hudText !== lastHud) { hud.textContent = hudText; lastHud = hudText; }
   // glide only governs the fountain, and only when the user isn't in control
   const gliding = !isManual && currentName === "fountain";
   if (gliding && !wasGliding) seedGlide?.(); // entering the glide → seed from current view

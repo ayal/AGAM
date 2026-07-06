@@ -46,6 +46,7 @@ export function makeParticleMaterial(map: THREE.Texture): THREE.ShaderMaterial {
       uMap: { value: map },
       uOpacity: { value: 1 },
       uScale: { value: 800 },
+      uTint: { value: new THREE.Color(1, 1, 1) }, // scene-light tint (day/night)
     },
     transparent: true,
     depthWrite: false,
@@ -67,12 +68,13 @@ export function makeParticleMaterial(map: THREE.Texture): THREE.ShaderMaterial {
     fragmentShader: `
       uniform sampler2D uMap;
       uniform float uOpacity;
+      uniform vec3 uTint;
       varying float vAlpha;
       varying vec3 vColor;
       void main(){
         float a = texture2D(uMap, gl_PointCoord).a;
         if (a < 0.01) discard;
-        gl_FragColor = vec4(vColor, a * vAlpha * uOpacity);
+        gl_FragColor = vec4(vColor * uTint, a * vAlpha * uOpacity);
       }
     `,
   });

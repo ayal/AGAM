@@ -71,6 +71,100 @@ export function createFountain(
   fill.position.set(-50, 40, -60);
   group.add(hemi, key, fill);
 
+  // ---- sky bodies: a sun and a moon arc overhead on a FAST day/night cycle
+  // (~2 min per full day). The key light follows the sun (warming toward the
+  // horizon), the fill light turns into cool moonlight after dark, and the
+  // background + hemisphere dim through a warm dusk into blue-gray night.
+  const DAY_CYCLE = 55; // seconds for one full day + night
+  const SKY_R = 430;
+  // Realistic diurnal arc for the fountain's real home — Dizengoff Square,
+  // ~32°N: the sun rises due east, crosses the SOUTHERN sky culminating at
+  // ~58°, and sets due west. Scene axes: +x east, +y up, +z south.
+  const LAT = (32 * Math.PI) / 180;
+  const skyBody = (inner: string, glow: string, size: number) => {
+    const s = 128;
+    const c = document.createElement("canvas");
+    c.width = c.height = s;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    g.addColorStop(0, inner);
+    g.addColorStop(0.42, inner); // solid disc core...
+    g.addColorStop(0.55, glow);  // ...with a soft atmospheric glow
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false,
+    }));
+    spr.scale.set(size, size, 1);
+    return spr;
+  };
+  const sunDisc = skyBody("rgba(255,232,178,1)", "rgba(255,212,130,0.28)", 56);
+  // A moon with a real phase: per-pixel sphere shading against the sun
+  // direction draws the curved terminator, random maria mottle the surface,
+  // and the dark limb keeps a whisper of earthshine. E = elongation from the
+  // sun (π = full, π/2 = half).
+  const makeMoonSprite = (E: number) => {
+    const s = 128;
+    const c = document.createElement("canvas");
+    c.width = c.height = s;
+    const ctx = c.getContext("2d")!;
+    const img = ctx.createImageData(s, s);
+    const maria = Array.from({ length: 7 }, () => ({
+      x: (Math.random() * 2 - 1) * 0.55,
+      y: (Math.random() * 2 - 1) * 0.55,
+      r: 0.15 + Math.random() * 0.22,
+      d: 0.1 + Math.random() * 0.16,
+    }));
+    const sx = Math.sin(E), sz = -Math.cos(E); // sun direction in moon-face space
+    for (let py = 0; py < s; py++) {
+      for (let px = 0; px < s; px++) {
+        const nx = (px / (s - 1)) * 2 - 1;
+        const ny = 1 - (py / (s - 1)) * 2;
+        const r2 = nx * nx + ny * ny;
+        if (r2 > 1) continue; // transparent outside the disc
+        const nz = Math.sqrt(1 - r2);
+        const diff = nx * sx + nz * sz; // >0 = the sunlit side of the sphere
+        const lit = Math.min(1, Math.max(0, 0.5 + diff / 0.16)); // soft terminator
+        let shade = 1;
+        for (const m of maria) {
+          const dd = Math.hypot(nx - m.x, ny - m.y);
+          if (dd < m.r) shade -= m.d * (1 - dd / m.r);
+        }
+        const L = lit * shade * (0.55 + 0.45 * nz); // + limb darkening
+        const o = (py * s + px) * 4;
+        img.data[o] = Math.min(255, 235 * L + 26);
+        img.data[o + 1] = Math.min(255, 238 * L + 30);
+        img.data[o + 2] = Math.min(255, 246 * L + 42); // blue-ish earthshine floor
+        img.data[o + 3] = Math.round(
+          255 * Math.min(1, (1 - Math.sqrt(r2)) * 14) * (0.24 + 0.76 * lit),
+        );
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false,
+    }));
+    spr.scale.set(36, 36, 1);
+    return spr;
+  };
+  // the phase is rolled per render: anything from a thick crescent to full
+  const moonE = Math.PI * (0.55 + Math.random() * 0.9); // elongation from the sun
+  const moonK = (1 - Math.cos(moonE)) / 2; // illuminated fraction → moonlight strength
+  const moonDisc = makeMoonSprite(moonE);
+  group.add(sunDisc, moonDisc);
+  // pre-allocated palette for the per-frame day/night blends
+  const BG_DAY = new THREE.Color(0xccced0), BG_NIGHT = new THREE.Color(0x525866), BG_DUSK = new THREE.Color(0xdfb08a);
+  const KEY_HIGH = new THREE.Color(0xfff2e0), KEY_LOW = new THREE.Color(0xff9f5e); // golden-hour amber
+  const HEMI_DAY = new THREE.Color(0xffffff), HEMI_NIGHT = new THREE.Color(0x93a0c0);
+  const GND_DAY = new THREE.Color(0xcfc8bb), GND_NIGHT = new THREE.Color(0x4a4f5d);
+  const FILL_DAY = new THREE.Color(0xdfe8ff), MOONLIGHT = new THREE.Color(0xb9c8ee);
+  const GOLD = new THREE.Color(0xffcf9a); // sky-wide warmth at golden hour
+  const SUN_HIGH = new THREE.Color(0xffffff), SUN_LOW = new THREE.Color(0xffa864);
+  const bgNow = new THREE.Color();
+  let simHour = 10; // simulated time of day (for the HUD clock)
+  let sunUp = true;
+
   // Darker, slightly see-through neutral fill for the upper levels (ring drums +
   // central column) — no water, no reflection.
   const neutralMat = new THREE.MeshLambertMaterial({
@@ -162,6 +256,8 @@ export function createFountain(
         // and its strength (both driven per-frame from the jet pressure)
         uImpactR: { value: new THREE.Vector3(0.5, 0.55, 0.6) },
         uImpactA: { value: new THREE.Vector3(0, 0, 0) },
+        uNight: { value: 0 }, // 0 = day, 1 = night (water darkens after dark)
+        uSky: { value: new THREE.Color(0xccced0) }, // current sky, tints the water
       },
       vertexShader: `
         uniform mat4 textureMatrix;
@@ -180,6 +276,8 @@ export function createFountain(
         uniform float uTime;
         uniform vec3 uImpactR;
         uniform vec3 uImpactA;
+        uniform float uNight;
+        uniform vec3 uSky;
         varying vec4 vUv;
         varying vec2 vLocal;
         varying vec3 vWorldPos;
@@ -200,7 +298,10 @@ export function createFountain(
           float m = clamp(0.5 + 0.1 * w + rings, 0.0, 1.0);
           vec3 deep  = vec3(0.12, 0.36, 0.62);
           vec3 light = vec3(0.34, 0.66, 0.88);
-          vec3 water = mix(deep, light, m);
+          // water takes the sky's tint (golden at dusk, blue-gray at night) and
+          // darkens after dark — open water is mostly reflected sky
+          vec3 water = mix(deep, light, m) * mix(1.0, 0.5, uNight);
+          water = mix(water, uSky * 0.55, 0.22);
           vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
                              cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006
                       + vec2(rings * 0.01);
@@ -518,6 +619,13 @@ export function createFountain(
   const embers = new THREE.Points(emberGeo, emberMat);
   group.add(embers);
 
+  // the flame really lights its surroundings: a flickering warm point light
+  // that warms the top ring — barely noticeable in daylight (as it should
+  // be), unmistakable at night
+  const fireLight = new THREE.PointLight(0xff8a3c, 0, 60, 2);
+  fireLight.position.set(0, fireY0 + 4, 0);
+  group.add(fireLight);
+
   // a faint warm halo behind the flame — fake firelight, no real lighting
   const halo = new THREE.Sprite(
     new THREE.SpriteMaterial({
@@ -550,6 +658,12 @@ export function createFountain(
     group,
     background,
     camera: [113, 20, 113], // pulled back to keep framing at 52° FOV (was [72,13,72]@75°)
+    // the HUD clock: simulated time of day, with a sun/moon marker
+    status: () => {
+      const h = Math.floor(simHour);
+      const m = Math.floor((simHour % 1) * 60);
+      return `${sunUp ? "☀" : "☾"} ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    },
     toggles: [
       { label: "fire", initial: true, set: (on) => { fireOn = on; } },
       { label: "water", initial: true, set: (on) => { waterOn = on; } },
@@ -590,6 +704,67 @@ export function createFountain(
         splashMat.uniforms.uScale.value = hpx;
         emberMat.uniforms.uScale.value = hpx;
       }
+
+      // ---- fast day/night: the sun & moon arc across the sky ----
+      const th = (time / DAY_CYCLE) * Math.PI * 2 + 1.1; // t=0 → mid-morning
+      // hour angle: 0 at solar noon, ±π at midnight (equinox declination)
+      const H = th - Math.PI / 2;
+      // unit direction on the celestial sphere (x east, y up, z south)
+      const ue = -Math.sin(H);
+      const uu = Math.cos(LAT) * Math.cos(H);
+      const us = Math.sin(LAT) * Math.cos(H);
+      const se = uu; // sun height (±cos LAT); drives daylight/dusk/night
+      const sxp = ue * SKY_R, syp = uu * SKY_R, szp = us * SKY_R;
+      sunDisc.position.set(sxp, syp, szp);
+      // the moon rides the same arc at its own hour angle, lagging the sun by
+      // its elongation — a full moon (E=π) rises exactly at sunset, a half
+      // moon trails by a quarter of a day
+      const Hm = H - moonE;
+      const uem = -Math.sin(Hm);
+      const uum = Math.cos(LAT) * Math.cos(Hm);
+      const usm = Math.sin(LAT) * Math.cos(Hm);
+      moonDisc.position.set(uem * SKY_R, uum * SKY_R, usm * SKY_R);
+      const dayL = Math.min(1, Math.max(0, (se + 0.06) / 0.24)); // daylight 0..1
+      const nightL = 1 - dayL;
+      const duskL = Math.max(0, 1 - Math.abs(se) / 0.25); // sun near the horizon
+      const sunMat = sunDisc.material as THREE.SpriteMaterial;
+      const moonMat = moonDisc.material as THREE.SpriteMaterial;
+      sunMat.opacity = Math.min(1, Math.max(0, (syp + 26) / 52)); // fade at horizon
+      const moonUp = Math.min(1, Math.max(0, (uum * SKY_R + 26) / 52));
+      moonMat.opacity = moonUp * (0.92 * nightL + 0.3 * dayL); // pale by day
+      sunDisc.visible = sunMat.opacity > 0.01;
+      moonDisc.visible = moonMat.opacity > 0.01;
+      // golden hour: near the horizon the sun swells, reddens, and washes the
+      // whole sky (hemisphere + background) in amber
+      sunMat.color.lerpColors(SUN_LOW, SUN_HIGH, Math.min(1, Math.max(0, se / 0.45)));
+      const sunSize = 56 * (1 + 0.4 * duskL);
+      sunDisc.scale.set(sunSize, sunSize, 1);
+      // the key light IS the sun; after dark the fill light becomes moonlight
+      key.position.set(sxp, Math.max(syp, 8), szp);
+      key.intensity = 1.5 * dayL;
+      key.color.lerpColors(KEY_LOW, KEY_HIGH, Math.min(1, Math.max(0, se / 0.55)));
+      // moonlight comes from the moon's true position, scaled by how much of
+      // it is lit — crescent nights are genuinely darker, and once the moon
+      // sets the night deepens further (the hemisphere light keeps a floor)
+      fill.position.set(uem * SKY_R, Math.max(uum * SKY_R, 12), usm * SKY_R);
+      fill.intensity = 0.7 * dayL + 0.95 * nightL * moonUp * (0.35 + 0.65 * moonK);
+      // the spray is lit by the same sky: full brightness by day, dim and
+      // slightly cool by night (brighter under a big moon) — it used to stay
+      // day-bright at midnight, which read as self-luminous water
+      const wetB = 0.4 + 0.6 * dayL + 0.32 * nightL * moonUp * moonK;
+      const jetTint = jetMat.uniforms.uTint.value as THREE.Color;
+      jetTint.setRGB(wetB * (1 - 0.14 * nightL), wetB * (1 - 0.06 * nightL), wetB);
+      (splashMat.uniforms.uTint.value as THREE.Color).copy(jetTint);
+      fill.color.lerpColors(MOONLIGHT, FILL_DAY, dayL);
+      hemi.intensity = 0.85 + 1.75 * dayL;
+      hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
+      hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
+      // background follows: day gray → GOLDEN dusk → night blue-gray
+      bgNow.lerpColors(BG_NIGHT, BG_DAY, dayL).lerp(BG_DUSK, duskL * 0.6);
+      env?.renderer.setClearColor(bgNow);
+      // simulated clock: noon when the sun peaks (th = π/2), midnight opposite
+      simHour = ((((th - Math.PI / 2) / (Math.PI * 2)) * 24 + 12) % 24 + 24) % 24;
+      sunUp = se > 0;
       // animate the pool's reflective water surface
       (pool.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
 
@@ -634,6 +809,8 @@ export function createFountain(
       // (rough analytic landing radius from the ring's current pressure)
       if (crispPool) {
         const u = (pool.material as THREE.ShaderMaterial).uniforms;
+        u.uNight.value = nightL;
+        (u.uSky.value as THREE.Color).copy(bgNow);
         const poolR = maxR + amp + 6;
         for (let g = 0; g < JET_RINGS.length; g++) {
           const ri = JET_RINGS[g];
@@ -717,10 +894,11 @@ export function createFountain(
         fire.rotation.z = -wx * 0.07;
         fire.updateFire(time, Math.min(1, fireLvl * 1.5));
       }
-      // halo breathes with the flame's flicker
+      // halo + real firelight breathe with the flame's flicker
       halo.visible = fire.visible;
       if (halo.visible)
         (halo.material as THREE.SpriteMaterial).opacity = 0.12 * fireLvl * (0.7 + 0.6 * fireScale(time));
+      fireLight.intensity = fireLvl * (26 + 30 * (fireScale(time) - 0.55));
 
       // embers ride the flame: spiral up, cool yellow → orange → gray, fade
       embers.visible = fireLvl > 0.01;

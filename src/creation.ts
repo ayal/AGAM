@@ -28,6 +28,7 @@ export interface Creation {
     },
   ) => void;
   toggles?: Toggle[]; // optional feature toggles (e.g. fire / water / music)
+  status?: () => string; // optional one-line HUD (e.g. the simulated clock)
   dispose?: () => void; // tear down any DOM/listeners it added
 }
 
