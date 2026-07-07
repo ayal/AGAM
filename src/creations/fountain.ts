@@ -5,6 +5,12 @@ import { createMusic } from "../music";
 import { createFireVolume } from "../fire";
 import { makeSoftSprite, makeDropSprite, makeParticleMaterial } from "../points";
 import type { Creation } from "../creation";
+// the fountain's world, built in cohesive modules (see each file):
+import { createNoise } from "./noise";
+import { createSun, createMoon } from "./celestial";
+import { createPlanet } from "./planet";
+import { createSkyDome } from "./sky";
+import { createPool } from "./water";
 
 // Agam's Fire & Water Fountain (Dizengoff Square): five stacked rings, profile
 // bulging with a big, tall middle ring. Each ring is a ZIGZAG accordion of
@@ -86,123 +92,18 @@ export function createFountain(
   // ~32°N: the sun rises due east, crosses the SOUTHERN sky culminating at
   // ~58°, and sets due west. Scene axes: +x east, +y up, +z south.
   const LAT = (32 * Math.PI) / 180;
-  // ---- shared procedural noise (used by the sun, the moon AND the planet
-  // terrain below): compact 4-octave value-noise fBm, new seed every render.
-  const pSeed = Math.random() * 1000;
-  const hash3 = (x: number, y: number, z: number) => {
-    const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + pSeed) * 43758.5453;
-    return s - Math.floor(s);
-  };
-  const fade5 = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
-  const lerpN = (a: number, b: number, t: number) => a + (b - a) * t;
-  const vnoise = (x: number, y: number, z: number) => {
-    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
-    const u = fade5(x - xi), v = fade5(y - yi), w = fade5(z - zi);
-    return lerpN(
-      lerpN(lerpN(hash3(xi, yi, zi), hash3(xi + 1, yi, zi), u),
-            lerpN(hash3(xi, yi + 1, zi), hash3(xi + 1, yi + 1, zi), u), v),
-      lerpN(lerpN(hash3(xi, yi, zi + 1), hash3(xi + 1, yi, zi + 1), u),
-            lerpN(hash3(xi, yi + 1, zi + 1), hash3(xi + 1, yi + 1, zi + 1), u), v),
-      w);
-  };
-  const fbm = (x: number, y: number, z: number) => {
-    let a = 0, amp = 0.5, f = 1;
-    for (let o = 0; o < 4; o++) { a += amp * vnoise(x * f, y * f, z * f); amp *= 0.5; f *= 2.03; }
-    return a; // ≈ 0..1
-  };
-  const sstep = (a: number, b: number, x: number) => {
-    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-    return t * t * (3 - 2 * t);
-  };
+  // shared procedural noise field — one seed per render drives the sun, the
+  // moon AND the planet terrain, so all three are coherent (see ./noise).
+  const noise = createNoise();
 
-  // ---- sun & moon: REAL procedural spheres, same recipe as the planet —
-  // fBm-driven vertex colours (+ displacement for the moon's rugged limb) on
-  // actual geometry. Opaque meshes: the planet clips them via the depth
-  // buffer, self-spin shows the surface actually rotating, and a small
-  // onBeforeCompile injection adds view-dependent limb darkening — features
-  // and shading both foreshorten toward the edge like a true ball.
-  const limbDarken = (mat: THREE.Material, k: number) => {
-    mat.onBeforeCompile = (sh) => {
-      sh.vertexShader = sh.vertexShader
-        .replace("void main() {", "varying vec3 vOrbN;\nvarying vec3 vOrbP;\nvoid main() {")
-        .replace("#include <begin_vertex>",
-          "#include <begin_vertex>\nvOrbN = normalize(normalMatrix * normal);\nvOrbP = (modelViewMatrix * vec4(position, 1.0)).xyz;");
-      sh.fragmentShader = sh.fragmentShader
-        .replace("void main() {", "varying vec3 vOrbN;\nvarying vec3 vOrbP;\nvoid main() {")
-        .replace("#include <opaque_fragment>",
-          `outgoingLight *= ${(1 - k).toFixed(2)} + ${k.toFixed(2)} * abs(dot(normalize(vOrbN), normalize(-vOrbP)));\n#include <opaque_fragment>`);
-    };
-  };
-  const makeOrb = (
-    radius: number,
-    paint: (p: THREE.Vector3, c: THREE.Color) => number, // fills c, returns radial displacement
-  ) => {
-    const geo = new THREE.SphereGeometry(radius, 64, 44);
-    const pos = geo.attributes.position as THREE.BufferAttribute;
-    const col = new Float32Array(pos.count * 3);
-    const p = new THREE.Vector3();
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      p.fromBufferAttribute(pos, i);
-      const d = paint(p, c);
-      if (d) {
-        const k = (radius + d) / radius;
-        pos.setXYZ(i, p.x * k, p.y * k, p.z * k);
-      }
-      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-    }
-    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    geo.computeVertexNormals();
-    // Basic (self-luminous) — the sun IS a light source, and the moon must
-    // stay a bright full moon at night when the scene's sun-key is off
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
-    limbDarken(mat, 0.45);
-    return new THREE.Mesh(geo, mat);
-  };
-  // sun: granulation via fBm — darker granules drift orange (blue channel
-  // drops fastest), exactly like the old per-pixel sprite did
-  const sunDisc = makeOrb(25, (p, c) => {
-    const n = fbm(p.x * 0.14, p.y * 0.14, p.z * 0.14);
-    const g = Math.min(1, Math.max(0.55, 0.78 + 0.5 * (n - 0.5)));
-    c.setRGB(Math.pow(g, 0.4), 0.99 * Math.pow(g, 0.8), 0.84 * Math.pow(g, 1.6));
-    return 0; // gas — no displacement
-  });
-  // faint corona: a sprite centred INSIDE the opaque sun mesh — the sphere's
-  // front half hides the sprite's core, so only the halo past the limb shows
-  {
-    const s = 128;
-    const cv = document.createElement("canvas");
-    cv.width = cv.height = s;
-    const ctx = cv.getContext("2d")!;
-    const cg = ctx.createRadialGradient(s / 2, s / 2, s * 0.3, s / 2, s / 2, s / 2);
-    cg.addColorStop(0, "rgba(255,235,160,0.32)");
-    cg.addColorStop(1, "rgba(255,235,160,0)");
-    ctx.fillStyle = cg;
-    ctx.fillRect(0, 0, s, s);
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false,
-    }));
-    glow.scale.set(80, 80, 1);
-    sunDisc.add(glow);
-  }
-  // always a full moon (opposite the sun — it rises at sunset): partial phases
-  // read as a glitch at this scale rather than as astronomy
+  // sun & moon as real procedural spheres (see ./celestial). moonE/moonK are
+  // the phase: a full moon (opposite the sun, so it rises at sunset) reads best
+  // at this scale — partial phases look like a glitch, not astronomy. moonK=1
+  // means fully illuminated → full moonlight strength.
+  const sunDisc = createSun(noise);
+  const moonDisc = createMoon(noise);
   const moonE = Math.PI;
-  const moonK = 1; // fully illuminated → full moonlight strength
-  // moon: big fBm maria patches + fine regolith mottle, and ±0.45 radial
-  // displacement so even the silhouette is subtly rugged
-  const moonDisc = makeOrb(19, (p, c) => {
-    const mar = fbm(p.x * 0.045, p.y * 0.045, p.z * 0.045);
-    const fine = fbm(p.x * 0.3 + 40, p.y * 0.3, p.z * 0.3);
-    const g = Math.min(1, Math.max(0.35,
-      0.88 + 0.22 * (fine - 0.5) - 0.34 * sstep(0.52, 0.72, mar)));
-    c.setRGB(
-      Math.min(1, 0.92 * g + 0.1),
-      Math.min(1, 0.93 * g + 0.12),
-      Math.min(1, 0.96 * g + 0.16), // blue-ish floor, like the old earthshine
-    );
-    return (fine - 0.5) * 0.9;
-  });
+  const moonK = 1;
   group.add(sunDisc, moonDisc);
   // pre-allocated palette for the per-frame day/night blends.
   // Per-session random sky character: duskMood (0=golden, 1=crimson),
@@ -240,134 +141,15 @@ export function createFountain(
   const ZEN_DAY = new THREE.Color(0x2e6eb8), ZEN_NIGHT = new THREE.Color(0x252c3d);
   const ZEN_DUSK = new THREE.Color().lerpColors(new THREE.Color(0x7878a8), new THREE.Color(0x60258a), duskMood);
   const zenNow = new THREE.Color();
-  const skyUniforms = {
-    uZenith: { value: new THREE.Color(0x2e6eb8) },
-    uHorizon: { value: new THREE.Color(0xb8d4e8) },
-    uNight: { value: 0 },
-    uTime: { value: 0 },
-    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
-    uGlow: { value: 0 },
-  };
-  const skyMat = new THREE.ShaderMaterial({
-    uniforms: skyUniforms,
-    side: THREE.BackSide,
-    depthWrite: false,
-    vertexShader: `
-      varying vec3 vDir;
-      void main(){
-        vDir = position;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 uZenith, uHorizon;
-      uniform float uNight, uTime, uGlow;
-      uniform vec3 uSunDir;
-      varying vec3 vDir;
-      void main(){
-        vec3 d = normalize(vDir);
-        // full-sphere gradient, mirrored below the equator: haze band at the
-        // middle fading to zenith toward BOTH poles. The old clamp(d.y)+pow
-        // version was flat below y=0 and had infinite slope at y=0, which drew
-        // a visible "second horizon" line in the sky above the planet's limb.
-        // smoothstep(h)^0.75 keeps zero slope at the equator — no crease.
-        float h = abs(d.y);
-        float t = pow(h * h * (3.0 - 2.0 * h), 0.75);
-        vec3 sky = mix(uHorizon, uZenith, t);
-        // golden-hour glow pooled around the sun's azimuth
-        float sunAmt = max(dot(d, uSunDir), 0.0);
-        sky += uGlow * vec3(1.0, 0.48, 0.18) * pow(sunAmt, 5.0) * (1.0 - h * 0.8) * 0.65;
-        // stars: a uniform 3D cell hash over the whole celestial sphere — no
-        // atan seam, no pinching at the zenith, and identical density in every
-        // direction; the opaque planet simply hides the ones behind its limb
-        if (uNight > 0.02) {
-          vec3 sc = d * 22.0;
-          vec3 cell = floor(sc);
-          float hs = fract(sin(dot(cell, vec3(127.1, 311.7, 74.7))) * 43758.5453);
-          if (hs > 0.88) {
-            vec3 sp = vec3(
-              fract(sin(dot(cell + 7.0,  vec3(269.5, 183.3, 246.1))) * 43758.5453),
-              fract(sin(dot(cell + 13.0, vec3(113.5, 271.9, 124.6))) * 43758.5453),
-              fract(sin(dot(cell + 31.0, vec3(419.2, 371.9, 168.2))) * 43758.5453)
-            ) * 0.6 + 0.2;
-            float sd = length(fract(sc) - sp);
-            float tw = 0.7 + 0.3 * sin(uTime * (2.0 + 4.0 * hs) + hs * 40.0);
-            sky += smoothstep(0.10, 0.0, sd) * tw * uNight * (0.5 + 0.5 * hs) * vec3(0.85, 0.88, 0.95);
-          }
-        }
-        // dither: ±1 LSB of screen-space noise breaks up 8-bit banding in the
-        // smooth gradient — without it, dark dusk/night skies show visible
-        // stepped bands (worst on OLED, and AirPlay compression amplifies them
-        // into crawling blocks)
-        float dn = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-        sky += (dn - 0.5) / 160.0;
-        gl_FragColor = vec4(sky, 1.0);
-      }
-    `,
-  });
-  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(SKY_R * 2.6, 48, 32), skyMat);
-  skyDome.renderOrder = -1; // paint first; everything else draws over it
-  skyDome.frustumCulled = false; // the camera lives inside the sphere
-  group.add(skyDome);
+  const sky = createSkyDome(SKY_R);
+  const skyUniforms = sky.uniforms; // the update loop drives these per-frame
+  group.add(sky.mesh);
 
-  // The fountain sits on a small planet (radius 62). Using real geometry means:
-  //  • the Lambert material responds to the directional sun/moon lights naturally
-  //  • wide glide shots reveal the sphere's curvature — it reads as a little planet
-  const PLANET_R = 320; // large enough to look like ground up close, show curvature from wide shots
-
-  // ---- procedural terrain (minimal take on dgreenheck/threejs-procedural-
-  // planets): 4-octave value-noise fBm (helpers defined up near SKY_R, shared
-  // with the sun/moon orbs) displaces the sphere's vertices and drives an
-  // elevation colour ramp baked into VERTEX COLOURS. Everything is computed
-  // once at build time on the CPU — no custom shader — so the Lambert sun/moon
-  // lighting, OLED dithering and the depth-buffer occlusion of the sun/moon
-  // all keep working exactly as before.
-  const planetMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff, // real colour lives in the vertex colours
-    vertexColors: true,
-    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
-    // the planet is one huge smoothly-lit surface — without dithering its
-    // day/night shading bands visibly on OLED screens
-    dithering: true,
-  });
-  // high tessellation: the far "planet shot" puts the whole silhouette on
-  // screen, and at 72 segments the limb visibly faceted (~5° per edge).
-  // (Also the terrain resolution: ~2° per edge ≈ 11-unit features.)
-  const planetGeo = new THREE.SphereGeometry(PLANET_R, 160, 112);
-  {
-    const pos = planetGeo.attributes.position as THREE.BufferAttribute;
-    const col = new Float32Array(pos.count * 3);
-    // warm rock ramp (no grass — tried it, looked wrong here), staying in the
-    // fountain's concrete family so the plaza blends seamlessly into terrain
-    const LOW = new THREE.Color(0x6b655a);   // basalt lowlands
-    const MID = new THREE.Color(0x8a8580);   // the old concrete gray
-    const HIGH = new THREE.Color(0xa89f8f);  // pale weathered highlands
-    const PLAZA = new THREE.Color(0x8a8580); // flat ground under the fountain
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-      const n = fbm(x * 0.011, y * 0.011, z * 0.011); // feature size ~90 units
-      // the fountain + basin sit at the +y pole: flatten a plaza there and
-      // let the terrain grow in from ~40 to ~120 units along the surface
-      const surfDist = PLANET_R * Math.acos(Math.min(1, Math.max(-1, y / PLANET_R)));
-      const wild = sstep(40, 120, surfDist);
-      const disp = (n - 0.5) * 22 * wild; // ±11 max — ~3.5% silhouette roughness
-      const k = (PLANET_R + disp) / PLANET_R;
-      pos.setXYZ(i, x * k, y * k, z * k);
-      // elevation ramp, eased back to plaza concrete near the fountain
-      if (n < 0.5) c.lerpColors(LOW, MID, n * 2);
-      else c.lerpColors(MID, HIGH, (n - 0.5) * 2);
-      c.lerp(PLAZA, 1 - wild);
-      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-    }
-    planetGeo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    planetGeo.computeVertexNormals();
-  }
-  const planetMesh = new THREE.Mesh(planetGeo, planetMat);
-  // sphere top sits 0.6 BELOW the waterline: the flat pool floats just above
-  // the ground everywhere (no z-fighting at the pole), and the basin rim
-  // covers the widening gap toward the edge (~1.4 at the rim radius)
-  planetMesh.position.y = poolY - PLANET_R - 0.6;
+  // the fountain stands on a little planet — real geometry so the Lambert
+  // material takes the sun/moon lights and wide shots reveal the curvature.
+  // Procedural terrain + placement live in ./planet (shares the noise field).
+  const PLANET_R = 320;
+  const planetMesh = createPlanet(noise, PLANET_R, poolY);
   group.add(planetMesh);
 
   // Darker, slightly see-through neutral fill for the upper levels (ring drums +
@@ -381,64 +163,6 @@ export function createFountain(
     dithering: true, // smooth curved drums band in low light without it
   });
 
-  // Cube map for the pool's NON-crisp reflection mode (captured from the
-  // fountain's centre each frame). Only used when the render isn't crisp.
-  const cubeRT = new THREE.WebGLCubeRenderTarget(512);
-  const cubeCam = new THREE.CubeCamera(0.5, 2000, cubeRT);
-  cubeCam.position.y = poolY + 0.5; // just above the pool, so its upward view
-  group.add(cubeCam);               // captures the fountain → the pool reflects it
-  const waterMeshes: THREE.Object3D[] = []; // hidden during the cube capture (just the pool)
-
-  // Cube-map water material — the pool's soft/non-crisp reflective surface.
-  const waterUniforms = {
-    uTime: { value: 0 },
-    envMap: { value: cubeRT.texture },
-  };
-  const waterMat = new THREE.ShaderMaterial({
-    uniforms: waterUniforms,
-    side: THREE.DoubleSide,
-    vertexShader: `
-      varying vec2 vUv;
-      varying vec3 vWorldPos;
-      varying vec3 vWorldNormal;
-      void main(){
-        vUv = uv;
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        vWorldPos = wp.xyz;
-        vWorldNormal = normalize(mat3(modelMatrix) * normal);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float uTime;
-      uniform samplerCube envMap;
-      varying vec2 vUv;
-      varying vec3 vWorldPos;
-      varying vec3 vWorldNormal;
-      void main(){
-        // summed directional ripples (no multiplicative blobs) → smooth flowing
-        // water rather than isolated spots; low amplitude = subtle shimmer
-        float w = sin(vUv.x * 7.0 + uTime * 0.5)
-                + sin(vUv.y * 9.0 - uTime * 0.45)
-                + 0.7 * sin((vUv.x + vUv.y) * 13.0 + uTime * 0.65)
-                + 0.5 * sin((vUv.x - vUv.y) * 17.0 - uTime * 0.6);
-        float m = clamp(0.5 + 0.1 * w, 0.0, 1.0);
-        vec3 deep  = vec3(0.12, 0.36, 0.62);
-        vec3 light = vec3(0.34, 0.66, 0.88);
-        vec3 water = mix(deep, light, m);
-        vec3 N = normalize(vWorldNormal + 0.012 * vec3(sin(vUv.y*18.0+uTime*1.3), 0.0, cos(vUv.x*18.0-uTime*1.1)));
-        vec3 V = normalize(vWorldPos - cameraPosition);
-        vec3 R = reflect(V, N);
-        vec3 env = textureCube(envMap, R).rgb;
-        float fres = 0.5 + 0.18 * pow(1.0 - abs(dot(N, -V)), 3.0); // stronger, more visible
-        vec3 col = mix(water, env, fres);
-        // anti-banding dither (dark water gradients step visibly on OLED)
-        col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 160.0;
-        gl_FragColor = vec4(col, 1.0);
-      }
-    `,
-  });
-
   // central water column — rises up the centre but STOPS at the base of the top
   // ring, whose own inner drum is the single water surface at the very top. (If
   // the column ran all the way up it sat *inside* the top drum, so the top read
@@ -449,135 +173,11 @@ export function createFountain(
   column.position.y = (colTop + poolY) / 2;
   group.add(column);
 
-  // The pool's reflection style for this render:
-  //   crispPool  -> a sharp planar mirror of the fountain
-  //   !crispPool -> the cube-map reflective water surface (soft / non-crisp)
-  // FLAT water disc. Water can't drape over a convex sphere — the old warped
-  // pool read as a wet decal stuck on the planet. Real fountains hold flat
-  // water in a raised basin, so: flat disc + concrete rim (built after the
-  // pool below), with the planet's pole sunk slightly beneath the waterline.
-  // Flat is also what the crisp Reflector assumes (it mirrors across a plane).
-  const poolGeo = new THREE.CircleGeometry(maxR + amp + 6, 96);
-  let pool: THREE.Mesh;
-  if (crispPool) {
-    const poolReflectShader = {
-      uniforms: {
-        color: { value: null },
-        tDiffuse: { value: null },
-        textureMatrix: { value: null },
-        uTime: { value: 0 },
-        // impact ripples: normalized radius where each jet ring's water lands,
-        // and its strength (both driven per-frame from the jet pressure)
-        uImpactR: { value: new THREE.Vector3(0.5, 0.55, 0.6) },
-        uImpactA: { value: new THREE.Vector3(0, 0, 0) },
-        uNight: { value: 0 }, // 0 = day, 1 = night (water darkens after dark)
-        uSky: { value: new THREE.Color(0xccced0) }, // current sky, tints the water
-      },
-      vertexShader: `
-        uniform mat4 textureMatrix;
-        varying vec4 vUv;     // projective coords into the reflection texture
-        varying vec2 vLocal;  // disc-local uv for the water ripple
-        varying vec3 vWorldPos; // for the Fresnel view angle
-        void main() {
-          vLocal = uv;
-          vUv = textureMatrix * vec4(position, 1.0);
-          vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float uTime;
-        uniform vec3 uImpactR;
-        uniform vec3 uImpactA;
-        uniform float uNight;
-        uniform vec3 uSky;
-        varying vec4 vUv;
-        varying vec2 vLocal;
-        varying vec3 vWorldPos;
-        void main() {
-          // summed directional ripples (no multiplicative blobs) → smooth
-          // flowing water rather than isolated spots; low amplitude = subtle
-          float w = sin(vLocal.x * 7.0 + uTime * 0.5)
-                  + sin(vLocal.y * 9.0 - uTime * 0.45)
-                  + 0.7 * sin((vLocal.x + vLocal.y) * 13.0 + uTime * 0.65)
-                  + 0.5 * sin((vLocal.x - vLocal.y) * 17.0 - uTime * 0.6);
-          // expanding rings around each jet-ring's landing radius, so the pool
-          // visibly reacts where the falling water actually meets it
-          float dc = length(vLocal - vec2(0.5)) * 2.0;
-          float rings =
-              uImpactA.x * exp(-24.0 * abs(dc - uImpactR.x)) * sin((dc - uImpactR.x) * 80.0 - uTime * 7.0)
-            + uImpactA.y * exp(-24.0 * abs(dc - uImpactR.y)) * sin((dc - uImpactR.y) * 80.0 - uTime * 7.4)
-            + uImpactA.z * exp(-24.0 * abs(dc - uImpactR.z)) * sin((dc - uImpactR.z) * 80.0 - uTime * 6.6);
-          float m = clamp(0.5 + 0.1 * w + rings, 0.0, 1.0);
-          vec3 deep  = vec3(0.12, 0.36, 0.62);
-          vec3 light = vec3(0.34, 0.66, 0.88);
-          // water takes the sky's tint (golden at dusk, blue-gray at night) and
-          // darkens after dark — open water is mostly reflected sky
-          vec3 water = mix(deep, light, m) * mix(1.0, 0.5, uNight);
-          water = mix(water, uSky * 0.55, 0.22);
-          vec2 ripple = vec2(sin(vLocal.y * 28.0 + uTime * 1.3),
-                             cos(vLocal.x * 28.0 - uTime * 1.1)) * 0.006
-                      + vec2(rings * 0.01);
-          vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
-          // Fresnel: near-vertical views see into the water (deep colour),
-          // grazing views become mostly mirror — like a real pool
-          vec3 V = normalize(cameraPosition - vWorldPos);
-          float fres = 0.18 + 0.55 * pow(1.0 - max(V.y, 0.0), 2.5);
-          // contact shading: the water darkens toward the tower base, which
-          // grounds the sculpture in the pool instead of floating on a disc
-          float ao = 1.0 - 0.22 * smoothstep(0.95, 0.55, dc);
-          vec3 col = mix(water, refl.rgb, fres) * ao;
-          // anti-banding dither (dark water gradients step visibly on OLED)
-          col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 160.0;
-          gl_FragColor = vec4(col, 1.0);
-        }
-      `,
-    };
-    pool = new Reflector(poolGeo, {
-      textureWidth: 1024,
-      textureHeight: 1024,
-      clipBias: 0.003,
-      shader: poolReflectShader,
-    });
-  } else {
-    pool = new THREE.Mesh(poolGeo, waterMat); // cube-map (non-crisp) water
-  }
-  pool.rotation.x = -Math.PI / 2;
-  pool.position.y = poolY;
-  group.add(pool);
-  waterMeshes.push(pool);
-
-  // ---- basin rim: a low concrete ring that CONTAINS the water. This is what
-  // makes the pool read as a fountain basin instead of a flat disc lying on
-  // the planet — the lip stands proud of the waterline and the outer wall
-  // runs down past the curved ground (which has dropped ~1.4 by the rim
-  // radius), hiding the gap under the flat water on every side.
-  {
-    const rimR = maxR + amp + 6;   // water meets the rim's inner face
-    const rimW = 1.7;              // lip width
-    const lipY = poolY + 0.6;      // lip top, proud of the water
-    const wallB = poolY - 2.6;     // below the sphere surface at this radius
-    const rimMat = new THREE.MeshLambertMaterial({
-      color: 0x9a948a, // concrete, a touch lighter than the planet
-      side: THREE.DoubleSide,
-      dithering: true,
-    });
-    const outerWall = new THREE.Mesh(
-      new THREE.CylinderGeometry(rimR + rimW, rimR + rimW, lipY - wallB, 96, 1, true),
-      rimMat,
-    );
-    outerWall.position.y = (lipY + wallB) / 2;
-    const innerWall = new THREE.Mesh(
-      new THREE.CylinderGeometry(rimR, rimR, lipY - (poolY - 1), 96, 1, true),
-      rimMat,
-    );
-    innerWall.position.y = (lipY + poolY - 1) / 2;
-    const lip = new THREE.Mesh(new THREE.RingGeometry(rimR, rimR + rimW, 96), rimMat);
-    lip.rotation.x = -Math.PI / 2;
-    lip.position.y = lipY;
-    group.add(outerWall, innerWall, lip);
-  }
+  // pool + basin: flat water disc held in a raised concrete rim (see ./water).
+  // The reflection style is chosen at build time (crisp planar mirror vs soft
+  // cube-map); the update loop pokes the pool material's uniforms via `pool`.
+  const { pool, cubeCam, cubeRT, waterMeshes, basin } = createPool(maxR + amp + 6, poolY, crispPool);
+  group.add(pool, cubeCam, basin);
 
   // ---- rings (each spins on its own, alternating directions) ----
   const ringGroups: THREE.Group[] = [];
