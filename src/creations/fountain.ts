@@ -86,153 +86,135 @@ export function createFountain(
   // ~32°N: the sun rises due east, crosses the SOUTHERN sky culminating at
   // ~58°, and sets due west. Scene axes: +x east, +y up, +z south.
   const LAT = (32 * Math.PI) / 180;
-  // Per-pixel sphere rendering: limb darkening + granulation blotches placed
-  // on the 3D sphere surface (chord distance), so features FORESHORTEN toward
-  // the limb — the strongest visual cue that this is a ball, not a disc.
-  // The material.color tint (golden at horizon, white at zenith) multiplies in.
-  const makeSunSprite = (size: number) => {
-    const s = 128;
-    const c = document.createElement("canvas");
-    c.width = c.height = s;
-    const ctx = c.getContext("2d")!;
-    const img = ctx.createImageData(s, s);
-    // random granulation blotches on the visible hemisphere (3D unit points)
-    const spots = Array.from({ length: 26 }, () => {
-      const az = Math.random() * Math.PI * 2;
-      const rr = Math.sqrt(Math.random());
-      const x = rr * Math.cos(az), y = rr * Math.sin(az);
-      return {
-        x, y, z: Math.sqrt(Math.max(0, 1 - x * x - y * y)),
-        r: 0.06 + Math.random() * 0.17,  // blotch radius (chord units)
-        d: 0.05 + Math.random() * 0.09,  // dimming depth
-      };
-    });
-    for (let py = 0; py < s; py++) {
-      for (let px = 0; px < s; px++) {
-        const nx = (px / (s - 1)) * 2 - 1;
-        const ny = 1 - (py / (s - 1)) * 2;
-        const r2 = nx * nx + ny * ny;
-        const o = (py * s + px) * 4;
-        if (r2 >= 1) { img.data[o + 3] = 0; continue; }
-        const nz = Math.sqrt(1 - r2);
-        const r = Math.sqrt(r2);
-        // limb darkening lives in the COLOR channels — putting it in alpha
-        // made the disc translucent and the sky bled through the whole orb
-        const limb = 0.55 + 0.45 * nz;
-        const edge = Math.min(1, (1 - r) * 22); // crisp disc boundary
-        // 3D chord distance to each blotch — near the limb the same blotch
-        // spans fewer pixels, giving true spherical foreshortening
-        let shade = 1;
-        for (const sp of spots) {
-          const dd = Math.hypot(nx - sp.x, ny - sp.y, nz - sp.z);
-          if (dd < sp.r) shade -= sp.d * (1 - dd / sp.r);
-        }
-        // darker granules go slightly orange (blue drops fastest) like real
-        // solar surface texture
-        img.data[o]     = Math.round(255 * limb * Math.pow(shade, 0.4));
-        img.data[o + 1] = Math.round((252 + 3 * nz) * limb * Math.pow(shade, 0.8));
-        img.data[o + 2] = Math.round((210 + 45 * nz) * limb * Math.pow(shade, 1.6));
-        img.data[o + 3] = Math.round(255 * edge); // fully opaque inside the disc
+  // ---- shared procedural noise (used by the sun, the moon AND the planet
+  // terrain below): compact 4-octave value-noise fBm, new seed every render.
+  const pSeed = Math.random() * 1000;
+  const hash3 = (x: number, y: number, z: number) => {
+    const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + pSeed) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const fade5 = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+  const lerpN = (a: number, b: number, t: number) => a + (b - a) * t;
+  const vnoise = (x: number, y: number, z: number) => {
+    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    const u = fade5(x - xi), v = fade5(y - yi), w = fade5(z - zi);
+    return lerpN(
+      lerpN(lerpN(hash3(xi, yi, zi), hash3(xi + 1, yi, zi), u),
+            lerpN(hash3(xi, yi + 1, zi), hash3(xi + 1, yi + 1, zi), u), v),
+      lerpN(lerpN(hash3(xi, yi, zi + 1), hash3(xi + 1, yi, zi + 1), u),
+            lerpN(hash3(xi, yi + 1, zi + 1), hash3(xi + 1, yi + 1, zi + 1), u), v),
+      w);
+  };
+  const fbm = (x: number, y: number, z: number) => {
+    let a = 0, amp = 0.5, f = 1;
+    for (let o = 0; o < 4; o++) { a += amp * vnoise(x * f, y * f, z * f); amp *= 0.5; f *= 2.03; }
+    return a; // ≈ 0..1
+  };
+  const sstep = (a: number, b: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+
+  // ---- sun & moon: REAL procedural spheres, same recipe as the planet —
+  // fBm-driven vertex colours (+ displacement for the moon's rugged limb) on
+  // actual geometry. Opaque meshes: the planet clips them via the depth
+  // buffer, self-spin shows the surface actually rotating, and a small
+  // onBeforeCompile injection adds view-dependent limb darkening — features
+  // and shading both foreshorten toward the edge like a true ball.
+  const limbDarken = (mat: THREE.Material, k: number) => {
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace("void main() {", "varying vec3 vOrbN;\nvarying vec3 vOrbP;\nvoid main() {")
+        .replace("#include <begin_vertex>",
+          "#include <begin_vertex>\nvOrbN = normalize(normalMatrix * normal);\nvOrbP = (modelViewMatrix * vec4(position, 1.0)).xyz;");
+      sh.fragmentShader = sh.fragmentShader
+        .replace("void main() {", "varying vec3 vOrbN;\nvarying vec3 vOrbP;\nvoid main() {")
+        .replace("#include <opaque_fragment>",
+          `outgoingLight *= ${(1 - k).toFixed(2)} + ${k.toFixed(2)} * abs(dot(normalize(vOrbN), normalize(-vOrbP)));\n#include <opaque_fragment>`);
+    };
+  };
+  const makeOrb = (
+    radius: number,
+    paint: (p: THREE.Vector3, c: THREE.Color) => number, // fills c, returns radial displacement
+  ) => {
+    const geo = new THREE.SphereGeometry(radius, 64, 44);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const col = new Float32Array(pos.count * 3);
+    const p = new THREE.Vector3();
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i);
+      const d = paint(p, c);
+      if (d) {
+        const k = (radius + d) / radius;
+        pos.setXYZ(i, p.x * k, p.y * k, p.z * k);
       }
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
-    ctx.putImageData(img, 0, 0);
-    // faint corona hugging the disc, fading OUTWARD to transparent — the last
-    // stop must be alpha 0: pixels beyond the gradient's outer circle (the
-    // texture's square corners) take the final stop's color
-    const cg = ctx.createRadialGradient(s / 2, s / 2, s * 0.46, s / 2, s / 2, s / 2);
-    cg.addColorStop(0, "rgba(255,235,160,0.3)");
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    // Basic (self-luminous) — the sun IS a light source, and the moon must
+    // stay a bright full moon at night when the scene's sun-key is off
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    limbDarken(mat, 0.45);
+    return new THREE.Mesh(geo, mat);
+  };
+  // sun: granulation via fBm — darker granules drift orange (blue channel
+  // drops fastest), exactly like the old per-pixel sprite did
+  const sunDisc = makeOrb(25, (p, c) => {
+    const n = fbm(p.x * 0.14, p.y * 0.14, p.z * 0.14);
+    const g = Math.min(1, Math.max(0.55, 0.78 + 0.5 * (n - 0.5)));
+    c.setRGB(Math.pow(g, 0.4), 0.99 * Math.pow(g, 0.8), 0.84 * Math.pow(g, 1.6));
+    return 0; // gas — no displacement
+  });
+  // faint corona: a sprite centred INSIDE the opaque sun mesh — the sphere's
+  // front half hides the sprite's core, so only the halo past the limb shows
+  {
+    const s = 128;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = s;
+    const ctx = cv.getContext("2d")!;
+    const cg = ctx.createRadialGradient(s / 2, s / 2, s * 0.3, s / 2, s / 2, s / 2);
+    cg.addColorStop(0, "rgba(255,235,160,0.32)");
     cg.addColorStop(1, "rgba(255,235,160,0)");
     ctx.fillStyle = cg;
     ctx.fillRect(0, 0, s, s);
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false,
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false,
     }));
-    spr.scale.set(size, size, 1);
-    return spr;
-  };
-  const sunDisc = makeSunSprite(50); // scaled with SKY_R so its apparent size is unchanged
-  // A moon with a real phase: per-pixel sphere shading against the sun
-  // direction draws the curved terminator, random maria mottle the surface,
-  // and the dark limb keeps a whisper of earthshine. E = elongation from the
-  // sun (π = full, π/2 = half).
-  const makeMoonSprite = (E: number) => {
-    const s = 128;
-    const c = document.createElement("canvas");
-    c.width = c.height = s;
-    const ctx = c.getContext("2d")!;
-    const img = ctx.createImageData(s, s);
-    // maria + craters live on the 3D sphere surface (unit points, chord
-    // distance) so they foreshorten toward the limb — reads as a ball
-    const onSphere = (spread: number) => {
-      const az = Math.random() * Math.PI * 2;
-      const rr = Math.sqrt(Math.random()) * spread;
-      const x = rr * Math.cos(az), y = rr * Math.sin(az);
-      return { x, y, z: Math.sqrt(Math.max(0, 1 - x * x - y * y)) };
-    };
-    const maria = Array.from({ length: 10 }, () => ({
-      ...onSphere(0.85),
-      r: 0.16 + Math.random() * 0.26,
-      d: 0.12 + Math.random() * 0.18,
-    }));
-    // small bright craters with a darker floor — crisp detail the eye reads
-    // as surface, not noise
-    const craters = Array.from({ length: 9 }, () => ({
-      ...onSphere(0.9),
-      r: 0.035 + Math.random() * 0.07,
-    }));
-    const sx = Math.sin(E), sz = -Math.cos(E); // sun direction in moon-face space
-    for (let py = 0; py < s; py++) {
-      for (let px = 0; px < s; px++) {
-        const nx = (px / (s - 1)) * 2 - 1;
-        const ny = 1 - (py / (s - 1)) * 2;
-        const r2 = nx * nx + ny * ny;
-        if (r2 > 1) continue; // transparent outside the disc
-        const nz = Math.sqrt(1 - r2);
-        const diff = nx * sx + nz * sz; // >0 = the sunlit side of the sphere
-        const lit = Math.min(1, Math.max(0, 0.5 + diff / 0.16)); // soft terminator
-        let shade = 1;
-        for (const m of maria) {
-          const dd = Math.hypot(nx - m.x, ny - m.y, nz - m.z);
-          if (dd < m.r) shade -= m.d * (1 - dd / m.r);
-        }
-        for (const cr of craters) {
-          const dd = Math.hypot(nx - cr.x, ny - cr.y, nz - cr.z);
-          if (dd < cr.r) {
-            const t = dd / cr.r;
-            // bright rim (outer third), slightly dark floor
-            shade += t > 0.66 ? 0.22 * (t - 0.66) / 0.34 : -0.1 * (1 - t / 0.66);
-          }
-        }
-        const L = lit * Math.max(0, shade) * (0.55 + 0.45 * nz); // + limb darkening
-        const o = (py * s + px) * 4;
-        img.data[o] = Math.min(255, 235 * L + 26);
-        img.data[o + 1] = Math.min(255, 238 * L + 30);
-        img.data[o + 2] = Math.min(255, 246 * L + 42); // blue-ish earthshine floor
-        // alpha is pure edge feather — the old `(0.24 + 0.76 * lit)` factor
-        // (which hid the dark side of partial phases) made the full moon's
-        // limb translucent, so the sky bled through its rim
-        img.data[o + 3] = Math.round(255 * Math.min(1, (1 - Math.sqrt(r2)) * 14));
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false,
-    }));
-    spr.scale.set(38, 38, 1); // scaled with SKY_R so its apparent size is unchanged
-    return spr;
-  };
-  // always a full moon (E = π, opposite the sun — it rises at sunset): partial
-  // phases read as a glitch at this scale rather than as astronomy
+    glow.scale.set(80, 80, 1);
+    sunDisc.add(glow);
+  }
+  // always a full moon (opposite the sun — it rises at sunset): partial phases
+  // read as a glitch at this scale rather than as astronomy
   const moonE = Math.PI;
   const moonK = 1; // fully illuminated → full moonlight strength
-  const moonDisc = makeMoonSprite(moonE);
+  // moon: big fBm maria patches + fine regolith mottle, and ±0.45 radial
+  // displacement so even the silhouette is subtly rugged
+  const moonDisc = makeOrb(19, (p, c) => {
+    const mar = fbm(p.x * 0.045, p.y * 0.045, p.z * 0.045);
+    const fine = fbm(p.x * 0.3 + 40, p.y * 0.3, p.z * 0.3);
+    const g = Math.min(1, Math.max(0.35,
+      0.88 + 0.22 * (fine - 0.5) - 0.34 * sstep(0.52, 0.72, mar)));
+    c.setRGB(
+      Math.min(1, 0.92 * g + 0.1),
+      Math.min(1, 0.93 * g + 0.12),
+      Math.min(1, 0.96 * g + 0.16), // blue-ish floor, like the old earthshine
+    );
+    return (fine - 0.5) * 0.9;
+  });
   group.add(sunDisc, moonDisc);
   // pre-allocated palette for the per-frame day/night blends.
   // Per-session random sky character: duskMood (0=golden, 1=crimson),
   // keyStrength (sun brightness), moonStrength (full-moon brightness).
   const duskMood = Math.random();
   const keyStrength = 4.0 + Math.random() * 1.2;   // 4.0–5.2 (strong sun = real lit/shadow split)
-  const moonStrength = 1.6 + Math.random() * 0.9;  // 1.6–2.5 (full moon really bright)
+  // Moonlight must stay well below sunlight in CONTRAST, not just brightness:
+  // the night ambient floor is only 0.5, so a 1.6–2.5 moon gave a lit:shadow
+  // ratio of up to 5:1 — HIGHER than the day's ~2.4:1 (whose lit faces also
+  // clip at full white, flattening them further). Moonlight now tops out with
+  // a night ratio ≈ 2:1, gentler than the sun in both brightness and contrast.
+  const moonStrength = 0.7 + Math.random() * 0.4;  // 0.7–1.1
   const BG_DAY = new THREE.Color(0xb8d4e8); // proper pale-blue haze (was flat gray)
   const BG_NIGHT = new THREE.Color(0x525866);
   const BG_DUSK = new THREE.Color().lerpColors(new THREE.Color(0xdfb08a), new THREE.Color(0xff6030), duskMood);
@@ -334,37 +316,12 @@ export function createFountain(
   const PLANET_R = 320; // large enough to look like ground up close, show curvature from wide shots
 
   // ---- procedural terrain (minimal take on dgreenheck/threejs-procedural-
-  // planets): 4-octave value-noise fBm displaces the sphere's vertices and
-  // drives an elevation colour ramp baked into VERTEX COLOURS. Everything is
-  // computed once at build time on the CPU — no custom shader — so the Lambert
-  // sun/moon lighting, OLED dithering and the depth-buffer occlusion of the
-  // sun/moon sprites all keep working exactly as before.
-  const pSeed = Math.random() * 1000;
-  const hash3 = (x: number, y: number, z: number) => {
-    const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + pSeed) * 43758.5453;
-    return s - Math.floor(s);
-  };
-  const fade5 = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
-  const lerpN = (a: number, b: number, t: number) => a + (b - a) * t;
-  const vnoise = (x: number, y: number, z: number) => {
-    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
-    const u = fade5(x - xi), v = fade5(y - yi), w = fade5(z - zi);
-    return lerpN(
-      lerpN(lerpN(hash3(xi, yi, zi), hash3(xi + 1, yi, zi), u),
-            lerpN(hash3(xi, yi + 1, zi), hash3(xi + 1, yi + 1, zi), u), v),
-      lerpN(lerpN(hash3(xi, yi, zi + 1), hash3(xi + 1, yi, zi + 1), u),
-            lerpN(hash3(xi, yi + 1, zi + 1), hash3(xi + 1, yi + 1, zi + 1), u), v),
-      w);
-  };
-  const fbm = (x: number, y: number, z: number) => {
-    let a = 0, amp = 0.5, f = 1;
-    for (let o = 0; o < 4; o++) { a += amp * vnoise(x * f, y * f, z * f); amp *= 0.5; f *= 2.03; }
-    return a; // ≈ 0..1
-  };
-  const sstep = (a: number, b: number, x: number) => {
-    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-    return t * t * (3 - 2 * t);
-  };
+  // planets): 4-octave value-noise fBm (helpers defined up near SKY_R, shared
+  // with the sun/moon orbs) displaces the sphere's vertices and drives an
+  // elevation colour ramp baked into VERTEX COLOURS. Everything is computed
+  // once at build time on the CPU — no custom shader — so the Lambert sun/moon
+  // lighting, OLED dithering and the depth-buffer occlusion of the sun/moon
+  // all keep working exactly as before.
   const planetMat = new THREE.MeshLambertMaterial({
     color: 0xffffff, // real colour lives in the vertex colours
     vertexColors: true,
@@ -380,11 +337,12 @@ export function createFountain(
   {
     const pos = planetGeo.attributes.position as THREE.BufferAttribute;
     const col = new Float32Array(pos.count * 3);
-    // warm rock ramp, staying in the fountain's concrete family so the plaza
-    // blends seamlessly into the terrain
-    const LOW = new THREE.Color(0x6b655a);   // basalt lowlands
-    const MID = new THREE.Color(0x8a8580);   // the old concrete gray
-    const HIGH = new THREE.Color(0xa89f8f);  // pale weathered highlands
+    // elevation ramp with a grass band (like the dgreenheck example, but
+    // muted): bare earth valleys → grass mid-lands → rock → pale peaks
+    const EARTH = new THREE.Color(0x6b655a); // bare earth lowlands
+    const GRASS = new THREE.Color(0x5e7f4e); // muted green
+    const ROCK  = new THREE.Color(0x8a8580); // the old concrete gray
+    const PEAK  = new THREE.Color(0xa89f8f); // pale weathered highlands
     const PLAZA = new THREE.Color(0x8a8580); // flat ground under the fountain
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
@@ -397,9 +355,11 @@ export function createFountain(
       const disp = (n - 0.5) * 14 * wild; // ±7 max — ~2% silhouette roughness
       const k = (PLANET_R + disp) / PLANET_R;
       pos.setXYZ(i, x * k, y * k, z * k);
-      // elevation ramp, eased back to plaza concrete near the fountain
-      if (n < 0.5) c.lerpColors(LOW, MID, n * 2);
-      else c.lerpColors(MID, HIGH, (n - 0.5) * 2);
+      // elevation ramp, eased back to plaza concrete near the fountain.
+      // fBm clusters around 0.5, so grass (the ~0.42 stop) is the widest band
+      if (n < 0.42) c.lerpColors(EARTH, GRASS, n / 0.42);
+      else if (n < 0.68) c.lerpColors(GRASS, ROCK, (n - 0.42) / 0.26);
+      else c.lerpColors(ROCK, PEAK, Math.min(1, (n - 0.68) / 0.32));
       c.lerp(PLAZA, 1 - wild);
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
@@ -1110,28 +1070,26 @@ export function createFountain(
       const dayL = Math.min(1, Math.max(0, (se + 0.06) / 0.24)); // daylight 0..1
       const nightL = 1 - dayL;
       const duskL = Math.max(0, 1 - Math.abs(se) / 0.25); // sun near the horizon
-      const sunMat = sunDisc.material as THREE.SpriteMaterial;
-      const moonMat = moonDisc.material as THREE.SpriteMaterial;
-      // NO opacity modulation on either body, EVER. Any time-of-day opacity is
-      // a trap: the full moon sets exactly at sunrise, so a "day washout" fade
-      // fires during every single moonset and reads as a horizon fade. The
-      // planet's limb clipping the sprites via the depth buffer is the ONLY
-      // thing that hides them.
-      sunMat.opacity = 1;
-      moonMat.opacity = 1;
-      // slow self-spin sells the orb (the surface features visibly rotate);
-      // spins on the sky clock so pausing time also holds the orbs still
-      sunMat.rotation = skyT * 0.02;
-      moonMat.rotation = -skyT * 0.013;
+      const sunMat = sunDisc.material as THREE.MeshBasicMaterial;
+      // NO opacity modulation on either body, EVER — they are opaque meshes
+      // and the planet's limb clipping them via the depth buffer is the ONLY
+      // thing that hides them. (Any time-of-day opacity is a trap: the full
+      // moon sets exactly at sunrise, so a fade fires during every moonset.)
+      // Slow self-spin — the procedural surface visibly rotates; runs on the
+      // sky clock so pausing time also holds the orbs still.
+      sunDisc.rotation.y = skyT * 0.1;
+      moonDisc.rotation.y = -skyT * 0.06;
       // moonLIGHT on the fountain follows the moon's true altitude — the light
       // should die as the moon drops below the fountain's own horizon,
       // independent of where the viewing camera happens to be
       const moonUp = Math.max(0, Math.min(1, (uum * SKY_R + 6) / 18));
       // golden hour: near the horizon the sun swells, reddens, and washes the
       // whole sky (hemisphere + background) in amber
+      // the tint multiplies the granulation vertex colours (amber at the
+      // horizon → warm white high in the sky); the mesh swells a touch at dusk
       sunMat.color.lerpColors(SUN_LOW, SUN_HIGH, Math.min(1, Math.max(0, se / 0.45)));
-      const sunSize = 50 * (1 + 0.1 * duskL);
-      sunDisc.scale.set(sunSize, sunSize, 1);
+      const sunK = 1 + 0.1 * duskL;
+      sunDisc.scale.set(sunK, sunK, sunK);
       // the key light IS the sun; after dark the fill light becomes moonlight.
       // Key is deliberately strong relative to hemi so the sun's DIRECTION is
       // legible: panels facing the sun are bright, panels facing away are in
