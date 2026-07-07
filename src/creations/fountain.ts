@@ -332,16 +332,81 @@ export function createFountain(
   //  • the Lambert material responds to the directional sun/moon lights naturally
   //  • wide glide shots reveal the sphere's curvature — it reads as a little planet
   const PLANET_R = 320; // large enough to look like ground up close, show curvature from wide shots
+
+  // ---- procedural terrain (minimal take on dgreenheck/threejs-procedural-
+  // planets): 4-octave value-noise fBm displaces the sphere's vertices and
+  // drives an elevation colour ramp baked into VERTEX COLOURS. Everything is
+  // computed once at build time on the CPU — no custom shader — so the Lambert
+  // sun/moon lighting, OLED dithering and the depth-buffer occlusion of the
+  // sun/moon sprites all keep working exactly as before.
+  const pSeed = Math.random() * 1000;
+  const hash3 = (x: number, y: number, z: number) => {
+    const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + pSeed) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const fade5 = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+  const lerpN = (a: number, b: number, t: number) => a + (b - a) * t;
+  const vnoise = (x: number, y: number, z: number) => {
+    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    const u = fade5(x - xi), v = fade5(y - yi), w = fade5(z - zi);
+    return lerpN(
+      lerpN(lerpN(hash3(xi, yi, zi), hash3(xi + 1, yi, zi), u),
+            lerpN(hash3(xi, yi + 1, zi), hash3(xi + 1, yi + 1, zi), u), v),
+      lerpN(lerpN(hash3(xi, yi, zi + 1), hash3(xi + 1, yi, zi + 1), u),
+            lerpN(hash3(xi, yi + 1, zi + 1), hash3(xi + 1, yi + 1, zi + 1), u), v),
+      w);
+  };
+  const fbm = (x: number, y: number, z: number) => {
+    let a = 0, amp = 0.5, f = 1;
+    for (let o = 0; o < 4; o++) { a += amp * vnoise(x * f, y * f, z * f); amp *= 0.5; f *= 2.03; }
+    return a; // ≈ 0..1
+  };
+  const sstep = (a: number, b: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
   const planetMat = new THREE.MeshLambertMaterial({
-    color: 0x8a8580, // warm concrete gray
+    color: 0xffffff, // real colour lives in the vertex colours
+    vertexColors: true,
     polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
     // the planet is one huge smoothly-lit surface — without dithering its
     // day/night shading bands visibly on OLED screens
     dithering: true,
   });
   // high tessellation: the far "planet shot" puts the whole silhouette on
-  // screen, and at 72 segments the limb visibly faceted (~5° per edge)
-  const planetMesh = new THREE.Mesh(new THREE.SphereGeometry(PLANET_R, 160, 112), planetMat);
+  // screen, and at 72 segments the limb visibly faceted (~5° per edge).
+  // (Also the terrain resolution: ~2° per edge ≈ 11-unit features.)
+  const planetGeo = new THREE.SphereGeometry(PLANET_R, 160, 112);
+  {
+    const pos = planetGeo.attributes.position as THREE.BufferAttribute;
+    const col = new Float32Array(pos.count * 3);
+    // warm rock ramp, staying in the fountain's concrete family so the plaza
+    // blends seamlessly into the terrain
+    const LOW = new THREE.Color(0x6b655a);   // basalt lowlands
+    const MID = new THREE.Color(0x8a8580);   // the old concrete gray
+    const HIGH = new THREE.Color(0xa89f8f);  // pale weathered highlands
+    const PLAZA = new THREE.Color(0x8a8580); // flat ground under the fountain
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const n = fbm(x * 0.011, y * 0.011, z * 0.011); // feature size ~90 units
+      // the fountain + basin sit at the +y pole: flatten a plaza there and
+      // let the terrain grow in from ~40 to ~120 units along the surface
+      const surfDist = PLANET_R * Math.acos(Math.min(1, Math.max(-1, y / PLANET_R)));
+      const wild = sstep(40, 120, surfDist);
+      const disp = (n - 0.5) * 14 * wild; // ±7 max — ~2% silhouette roughness
+      const k = (PLANET_R + disp) / PLANET_R;
+      pos.setXYZ(i, x * k, y * k, z * k);
+      // elevation ramp, eased back to plaza concrete near the fountain
+      if (n < 0.5) c.lerpColors(LOW, MID, n * 2);
+      else c.lerpColors(MID, HIGH, (n - 0.5) * 2);
+      c.lerp(PLAZA, 1 - wild);
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    planetGeo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    planetGeo.computeVertexNormals();
+  }
+  const planetMesh = new THREE.Mesh(planetGeo, planetMat);
   // sphere top sits 0.6 BELOW the waterline: the flat pool floats just above
   // the ground everywhere (no z-fighting at the pole), and the basin rim
   // covers the widening gap toward the edge (~1.4 at the rim radius)
