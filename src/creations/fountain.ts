@@ -64,10 +64,10 @@ export function createFountain(
   // painted colour (matte, poster-bright), while a soft warm key + cool fill
   // give the pleats real dimensionality as the rings turn. Only the Lambert
   // surfaces (panels, caps, drums) respond — pool/jets/fire are shaders.
-  const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 1.9);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 1.1);
   const key = new THREE.DirectionalLight(0xfff2e0, 4.5);
   key.position.set(60, 90, 40);
-  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.3);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.2);
   fill.position.set(-50, 40, -60);
   group.add(hemi, key, fill);
 
@@ -337,12 +337,11 @@ export function createFountain(
   {
     const pos = planetGeo.attributes.position as THREE.BufferAttribute;
     const col = new Float32Array(pos.count * 3);
-    // elevation ramp with a grass band (like the dgreenheck example, but
-    // muted): bare earth valleys → grass mid-lands → rock → pale peaks
-    const EARTH = new THREE.Color(0x6b655a); // bare earth lowlands
-    const GRASS = new THREE.Color(0x5e7f4e); // muted green
-    const ROCK  = new THREE.Color(0x8a8580); // the old concrete gray
-    const PEAK  = new THREE.Color(0xa89f8f); // pale weathered highlands
+    // warm rock ramp (no grass — tried it, looked wrong here), staying in the
+    // fountain's concrete family so the plaza blends seamlessly into terrain
+    const LOW = new THREE.Color(0x6b655a);   // basalt lowlands
+    const MID = new THREE.Color(0x8a8580);   // the old concrete gray
+    const HIGH = new THREE.Color(0xa89f8f);  // pale weathered highlands
     const PLAZA = new THREE.Color(0x8a8580); // flat ground under the fountain
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
@@ -352,14 +351,12 @@ export function createFountain(
       // let the terrain grow in from ~40 to ~120 units along the surface
       const surfDist = PLANET_R * Math.acos(Math.min(1, Math.max(-1, y / PLANET_R)));
       const wild = sstep(40, 120, surfDist);
-      const disp = (n - 0.5) * 14 * wild; // ±7 max — ~2% silhouette roughness
+      const disp = (n - 0.5) * 22 * wild; // ±11 max — ~3.5% silhouette roughness
       const k = (PLANET_R + disp) / PLANET_R;
       pos.setXYZ(i, x * k, y * k, z * k);
-      // elevation ramp, eased back to plaza concrete near the fountain.
-      // fBm clusters around 0.5, so grass (the ~0.42 stop) is the widest band
-      if (n < 0.42) c.lerpColors(EARTH, GRASS, n / 0.42);
-      else if (n < 0.68) c.lerpColors(GRASS, ROCK, (n - 0.42) / 0.26);
-      else c.lerpColors(ROCK, PEAK, Math.min(1, (n - 0.68) / 0.32));
+      // elevation ramp, eased back to plaza concrete near the fountain
+      if (n < 0.5) c.lerpColors(LOW, MID, n * 2);
+      else c.lerpColors(MID, HIGH, (n - 0.5) * 2);
       c.lerp(PLAZA, 1 - wild);
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
@@ -1102,7 +1099,7 @@ export function createFountain(
       // doesn't compete with the key, so there's always a lit and a dark side.
       // Day fill kept LOW: the shadow side should visibly drop away from the
       // sunlit side, not get topped back up by a second sun.
-      fill.intensity = 0.3 * dayL + moonStrength * nightL * moonUp * (0.35 + 0.65 * moonK);
+      fill.intensity = 0.2 * dayL + moonStrength * nightL * moonUp * (0.35 + 0.65 * moonK);
       // the spray is lit by the same sky: full brightness by day, dim and
       // slightly cool by night (brighter under a big moon) — it used to stay
       // day-bright at midnight, which read as self-luminous water
@@ -1111,12 +1108,14 @@ export function createFountain(
       jetTint.setRGB(wetB * (1 - 0.14 * nightL), wetB * (1 - 0.06 * nightL), wetB);
       (splashMat.uniforms.uTint.value as THREE.Color).copy(jetTint);
       fill.color.lerpColors(MOONLIGHT, FILL_DAY, dayL);
-      // hemisphere: enough fill to keep the panels colourful on their shadow side,
-      // but kept well below key so the sun's direction is clearly readable —
-      // the key:hemi ratio at noon is now ~2.4:1 (was ~1.9:1), which is where
-      // the lit/shadow sweep across the rotating rings actually pops.
-      // Night floor (0.5) keeps the artwork visible by moonlight/firelight.
-      hemi.intensity = 0.5 + 1.4 * dayL; // range 0.5–1.9 (key at 4.0–5.2 dominates)
+      // hemisphere: enough fill to keep the panels colourful on their shadow
+      // side, but the DAY ambient is what was washing out daytime shadows —
+      // at 1.9 the shadow side sat at ~2.2 total vs the night floor's 0.5,
+      // which is why moonlight looked contrastier than sunlight. At ~1.1 the
+      // noon key:ambient ratio is ~3.5:1: sunlit faces stay bright (key is
+      // untouched) while shadow faces and the planet's night side actually
+      // fall dark. Night floor (0.5) keeps the artwork visible by moonlight.
+      hemi.intensity = 0.5 + 0.6 * dayL; // range 0.5–1.1 (key at 4.0–5.2 dominates)
       hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
       hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
       // horizon follows: day haze → GOLDEN dusk → night blue-gray; the clear

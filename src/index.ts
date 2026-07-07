@@ -179,9 +179,10 @@ function makeCredit(): HTMLAnchorElement {
   a.style.cssText =
     "display:inline-block;text-align:right;line-height:1.45;" +
     "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;" +
-    "color:#3c3f42;text-decoration:none;" +
-    "background:rgba(246,244,238,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);" +
-    "border-radius:8px;padding:3px 9px;"; // same pill as the HUD — legible at night
+    // ghost text, no pill (same in kiosk and regular mode) — the art should
+    // dominate; the soft dark shadow keeps it legible on the pale day sky
+    "color:rgba(255,255,255,.32);text-decoration:none;" +
+    "text-shadow:0 1px 10px rgba(0,0,0,.5);";
   return a;
 }
 
@@ -365,12 +366,6 @@ if (AUTO) {
   credit.style.right = "2.4%";
   credit.style.bottom = "3%";
   credit.style.zIndex = "3";
-  // kiosk: ghost text, no pill — the art should dominate
-  credit.style.background = "none";
-  credit.style.backdropFilter = "none";
-  (credit.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = "none";
-  credit.style.color = "rgba(255,255,255,.32)";
-  credit.style.textShadow = "0 1px 10px rgba(0,0,0,.5)";
   frame.appendChild(credit);
   // (no clock in kiosk — the sky itself tells the time)
   surround.appendChild(frame);
