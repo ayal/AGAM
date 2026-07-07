@@ -23,6 +23,9 @@ export interface Creation {
       renderer: THREE.WebGLRenderer;
       scene: THREE.Scene;
       camera?: THREE.Camera;
+      // day/night clock, pausable independently of `time` (which always runs:
+      // rings, water, fire keep animating while the sun/moon/light freeze)
+      skyTime?: number;
       // false = don't spin the whole group (auto/kiosk mode orbits the camera
       // instead, so the group should hold still while the rings keep spinning).
       spinGroup?: boolean;

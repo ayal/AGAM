@@ -64,10 +64,10 @@ export function createFountain(
   // painted colour (matte, poster-bright), while a soft warm key + cool fill
   // give the pleats real dimensionality as the rings turn. Only the Lambert
   // surfaces (panels, caps, drums) respond — pool/jets/fire are shaders.
-  const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 2.6);
-  const key = new THREE.DirectionalLight(0xfff2e0, 1.5);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xcfc8bb, 1.9);
+  const key = new THREE.DirectionalLight(0xfff2e0, 4.5);
   key.position.set(60, 90, 40);
-  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.3);
   fill.position.set(-50, 40, -60);
   group.add(hemi, key, fill);
 
@@ -231,7 +231,7 @@ export function createFountain(
   // Per-session random sky character: duskMood (0=golden, 1=crimson),
   // keyStrength (sun brightness), moonStrength (full-moon brightness).
   const duskMood = Math.random();
-  const keyStrength = 2.4 + Math.random() * 1.0;   // 2.4–3.4
+  const keyStrength = 4.0 + Math.random() * 1.2;   // 4.0–5.2 (strong sun = real lit/shadow split)
   const moonStrength = 1.6 + Math.random() * 0.9;  // 1.6–2.5 (full moon really bright)
   const BG_DAY = new THREE.Color(0xb8d4e8); // proper pale-blue haze (was flat gray)
   const BG_NIGHT = new THREE.Color(0x525866);
@@ -284,8 +284,14 @@ export function createFountain(
       varying vec3 vDir;
       void main(){
         vec3 d = normalize(vDir);
-        float h = clamp(d.y, 0.0, 1.0);
-        vec3 sky = mix(uHorizon, uZenith, pow(h, 0.65));
+        // full-sphere gradient, mirrored below the equator: haze band at the
+        // middle fading to zenith toward BOTH poles. The old clamp(d.y)+pow
+        // version was flat below y=0 and had infinite slope at y=0, which drew
+        // a visible "second horizon" line in the sky above the planet's limb.
+        // smoothstep(h)^0.75 keeps zero slope at the equator — no crease.
+        float h = abs(d.y);
+        float t = pow(h * h * (3.0 - 2.0 * h), 0.75);
+        vec3 sky = mix(uHorizon, uZenith, t);
         // golden-hour glow pooled around the sun's azimuth
         float sunAmt = max(dot(d, uSunDir), 0.0);
         sky += uGlow * vec3(1.0, 0.48, 0.18) * pow(sunAmt, 5.0) * (1.0 - h * 0.8) * 0.65;
@@ -336,8 +342,10 @@ export function createFountain(
   // high tessellation: the far "planet shot" puts the whole silhouette on
   // screen, and at 72 segments the limb visibly faceted (~5° per edge)
   const planetMesh = new THREE.Mesh(new THREE.SphereGeometry(PLANET_R, 160, 112), planetMat);
-  // top of sphere exactly at poolY so the pool rests on the surface
-  planetMesh.position.y = poolY - PLANET_R;
+  // sphere top sits 0.6 BELOW the waterline: the flat pool floats just above
+  // the ground everywhere (no z-fighting at the pole), and the basin rim
+  // covers the widening gap toward the edge (~1.4 at the rim radius)
+  planetMesh.position.y = poolY - PLANET_R - 0.6;
   group.add(planetMesh);
 
   // Darker, slightly see-through neutral fill for the upper levels (ring drums +
@@ -422,19 +430,12 @@ export function createFountain(
   // The pool's reflection style for this render:
   //   crispPool  -> a sharp planar mirror of the fountain
   //   !crispPool -> the cube-map reflective water surface (soft / non-crisp)
+  // FLAT water disc. Water can't drape over a convex sphere — the old warped
+  // pool read as a wet decal stuck on the planet. Real fountains hold flat
+  // water in a raised basin, so: flat disc + concrete rim (built after the
+  // pool below), with the planet's pole sunk slightly beneath the waterline.
+  // Flat is also what the crisp Reflector assumes (it mirrors across a plane).
   const poolGeo = new THREE.CircleGeometry(maxR + amp + 6, 96);
-  // Warp the disc to follow the planet sphere surface.
-  // pool.rotation.x = -π/2, so local-Z → world-Y; the sphere surface dips by
-  // sqrt(R² - r²) - R below its pole at horizontal radius r (always ≤ 0).
-  {
-    const pos = poolGeo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      const lx = pos.getX(i), ly = pos.getY(i);
-      const r2 = lx * lx + ly * ly;
-      if (r2 > 0) pos.setZ(i, Math.sqrt(PLANET_R * PLANET_R - r2) - PLANET_R + 0.5);
-    }
-    poolGeo.computeVertexNormals();
-  }
   let pool: THREE.Mesh;
   if (crispPool) {
     const poolReflectShader = {
@@ -524,6 +525,37 @@ export function createFountain(
   pool.position.y = poolY;
   group.add(pool);
   waterMeshes.push(pool);
+
+  // ---- basin rim: a low concrete ring that CONTAINS the water. This is what
+  // makes the pool read as a fountain basin instead of a flat disc lying on
+  // the planet — the lip stands proud of the waterline and the outer wall
+  // runs down past the curved ground (which has dropped ~1.4 by the rim
+  // radius), hiding the gap under the flat water on every side.
+  {
+    const rimR = maxR + amp + 6;   // water meets the rim's inner face
+    const rimW = 1.7;              // lip width
+    const lipY = poolY + 0.6;      // lip top, proud of the water
+    const wallB = poolY - 2.6;     // below the sphere surface at this radius
+    const rimMat = new THREE.MeshLambertMaterial({
+      color: 0x9a948a, // concrete, a touch lighter than the planet
+      side: THREE.DoubleSide,
+      dithering: true,
+    });
+    const outerWall = new THREE.Mesh(
+      new THREE.CylinderGeometry(rimR + rimW, rimR + rimW, lipY - wallB, 96, 1, true),
+      rimMat,
+    );
+    outerWall.position.y = (lipY + wallB) / 2;
+    const innerWall = new THREE.Mesh(
+      new THREE.CylinderGeometry(rimR, rimR, lipY - (poolY - 1), 96, 1, true),
+      rimMat,
+    );
+    innerWall.position.y = (lipY + poolY - 1) / 2;
+    const lip = new THREE.Mesh(new THREE.RingGeometry(rimR, rimR + rimW, 96), rimMat);
+    lip.rotation.x = -Math.PI / 2;
+    lip.position.y = lipY;
+    group.add(outerWall, innerWall, lip);
+  }
 
   // ---- rings (each spins on its own, alternating directions) ----
   const ringGroups: THREE.Group[] = [];
@@ -989,7 +1021,10 @@ export function createFountain(
       }
 
       // ---- fast day/night: the sun & moon arc across the sky ----
-      const th = (time / DAY_CYCLE) * Math.PI * 2 + 1.1; // t=0 → mid-morning
+      // skyTime is the PAUSABLE clock: freezing it holds the sun/moon/light
+      // still while `time` (rings, water, fire) keeps running
+      const skyT = env?.skyTime ?? time;
+      const th = (skyT / DAY_CYCLE) * Math.PI * 2 + 1.1; // t=0 → mid-morning
       // hour angle: 0 at solar noon, ±π at midnight (equinox declination)
       const H = th - Math.PI / 2;
       // unit direction on the celestial sphere (x east, y up, z south)
@@ -1019,9 +1054,10 @@ export function createFountain(
       // thing that hides them.
       sunMat.opacity = 1;
       moonMat.opacity = 1;
-      // slow self-spin sells the orb (the surface features visibly rotate)
-      sunMat.rotation = time * 0.02;
-      moonMat.rotation = -time * 0.013;
+      // slow self-spin sells the orb (the surface features visibly rotate);
+      // spins on the sky clock so pausing time also holds the orbs still
+      sunMat.rotation = skyT * 0.02;
+      moonMat.rotation = -skyT * 0.013;
       // moonLIGHT on the fountain follows the moon's true altitude — the light
       // should die as the moon drops below the fountain's own horizon,
       // independent of where the viewing camera happens to be
@@ -1040,8 +1076,10 @@ export function createFountain(
       key.color.lerpColors(KEY_LOW, KEY_HIGH, Math.min(1, Math.max(0, se / 0.55)));
       fill.position.set(uem * SKY_R, Math.max(uum * SKY_R, 12), usm * SKY_R);
       // fill / moonlight is a gentler bounce — keeps shadow sides readable but
-      // doesn't compete with the key, so there's always a lit and a dark side
-      fill.intensity = 0.45 * dayL + moonStrength * nightL * moonUp * (0.35 + 0.65 * moonK);
+      // doesn't compete with the key, so there's always a lit and a dark side.
+      // Day fill kept LOW: the shadow side should visibly drop away from the
+      // sunlit side, not get topped back up by a second sun.
+      fill.intensity = 0.3 * dayL + moonStrength * nightL * moonUp * (0.35 + 0.65 * moonK);
       // the spray is lit by the same sky: full brightness by day, dim and
       // slightly cool by night (brighter under a big moon) — it used to stay
       // day-bright at midnight, which read as self-luminous water
@@ -1051,9 +1089,11 @@ export function createFountain(
       (splashMat.uniforms.uTint.value as THREE.Color).copy(jetTint);
       fill.color.lerpColors(MOONLIGHT, FILL_DAY, dayL);
       // hemisphere: enough fill to keep the panels colourful on their shadow side,
-      // but kept below key so the sun's direction is still clearly readable.
+      // but kept well below key so the sun's direction is clearly readable —
+      // the key:hemi ratio at noon is now ~2.4:1 (was ~1.9:1), which is where
+      // the lit/shadow sweep across the rotating rings actually pops.
       // Night floor (0.5) keeps the artwork visible by moonlight/firelight.
-      hemi.intensity = 0.5 + 1.1 * dayL; // range 0.5–1.6 (key at 3.5–5.0 still dominates)
+      hemi.intensity = 0.5 + 1.4 * dayL; // range 0.5–1.9 (key at 4.0–5.2 dominates)
       hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
       hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
       // horizon follows: day haze → GOLDEN dusk → night blue-gray; the clear

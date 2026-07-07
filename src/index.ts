@@ -259,10 +259,15 @@ function buildUI(name: string) {
       b = iconBtn("grid", sel);
       styleIcon(b, active);
     }
-    // clicking the current creation re-rolls patterns+colors but keeps the modes
-    // & camera (soft); clicking the other one switches (full render). Both go
-    // through the crossfade so the rebuild reads as a beat, not a glitch.
-    b.onclick = () => fadeTo(() => setCreation(sel, sel === currentName));
+    // clicking the current creation re-rolls patterns+colors. If the creation
+    // supports recolor (the fountain), morph IN PLACE — same path as the
+    // kiosk's every-few-days pattern change: no rebuild, no crossfade, the new
+    // patterns breathe into the live panels. Otherwise (or when switching to
+    // the OTHER creation) rebuild behind the crossfade as before.
+    b.onclick = () => {
+      if (sel === currentName && current?.recolor) current.recolor();
+      else fadeTo(() => setCreation(sel, sel === currentName));
+    };
     bar.appendChild(b);
   }
   // refresh = a full new render (new modes, colors, patterns, reset camera)
@@ -634,7 +639,10 @@ const animate = () => {
   requestAnimationFrame(animate);
   timer.update();
   const raw = timer.getElapsed();
-  const t = (elapsed = timePaused ? (pauseStart - totalPausedTime) : (raw - totalPausedTime));
+  // `t` ALWAYS runs — pausing time freezes only the day/night sky (sun, moon,
+  // lighting) via skyT below; the fountain keeps spinning and spraying.
+  const t = (elapsed = raw);
+  const skyT = timePaused ? (pauseStart - totalPausedTime) : (raw - totalPausedTime);
   const baseStatus = current?.status?.() ?? "";
   const hudText = baseStatus ? (timePaused ? baseStatus + " ⏸" : baseStatus) : "";
   if (hudText !== lastHud) {
@@ -649,7 +657,7 @@ const animate = () => {
   else if (trackball.enabled) trackball.update(); // free-tumble agamograph
   else controls.update(); // manual fountain control
   checkIdle?.(t);
-  current?.update?.(t, autoRotate, { renderer, scene, camera, spinGroup: !gliding });
+  current?.update?.(t, autoRotate, { renderer, scene, camera, skyTime: skyT, spinGroup: !gliding });
   renderer.render(scene, camera);
   wasGliding = gliding;
 };
