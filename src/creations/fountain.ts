@@ -209,12 +209,12 @@ export function createFountain(
   // keyStrength (sun brightness), moonStrength (full-moon brightness).
   const duskMood = Math.random();
   const keyStrength = 4.0 + Math.random() * 1.2;   // 4.0–5.2 (strong sun = real lit/shadow split)
-  // Moonlight must stay well below sunlight in CONTRAST, not just brightness:
-  // the night ambient floor is only 0.5, so a 1.6–2.5 moon gave a lit:shadow
-  // ratio of up to 5:1 — HIGHER than the day's ~2.4:1 (whose lit faces also
-  // clip at full white, flattening them further). Moonlight now tops out with
-  // a night ratio ≈ 2:1, gentler than the sun in both brightness and contrast.
-  const moonStrength = 0.7 + Math.random() * 0.4;  // 0.7–1.1
+  // Moonlight sized against the night ambient floor (0.5) so its lit:shadow
+  // ratio lands at ~3.2–3.8:1 — right at, but not above, the day's ~3.5:1
+  // (key 4.0–5.2 over ~1.3 day ambient). The old 1.6–2.5 moon hit 5:1 and
+  // out-contrasted the sun; the 0.7–1.1 overcorrection left the moon barely
+  // modelling the fountain and planet at all.
+  const moonStrength = 1.1 + Math.random() * 0.3;  // 1.1–1.4
   const BG_DAY = new THREE.Color(0xb8d4e8); // proper pale-blue haze (was flat gray)
   const BG_NIGHT = new THREE.Color(0x525866);
   const BG_DUSK = new THREE.Color().lerpColors(new THREE.Color(0xdfb08a), new THREE.Color(0xff6030), duskMood);
