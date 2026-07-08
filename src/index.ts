@@ -262,7 +262,7 @@ function buildUI(name: string) {
     }
     // clicking the current creation re-rolls patterns+colors. If the creation
     // supports recolor (the fountain), morph IN PLACE — same path as the
-    // kiosk's every-few-days pattern change: no rebuild, no crossfade, the new
+    // kiosk's nightly pattern change: no rebuild, no crossfade, the new
     // patterns breathe into the live panels. Otherwise (or when switching to
     // the OTHER creation) rebuild behind the crossfade as before.
     b.onclick = () => {
@@ -475,27 +475,34 @@ if (AUTO) {
   };
 
   // A small repertoire of shot types keeps the motion varied and intentional.
+  // The fountain stays the anchor, but close-ups never chain back-to-back:
+  // after one, the next leg is pushed out to a mid/wide/planet shot, so the
+  // loop keeps circulating and showing the scene from new angles instead of
+  // lingering at the basin.
+  let lastClose = false;
   const pickLeg = (now: number) => {
     from = { ...orbit };
     const dir = Math.random() < 0.5 ? 1 : -1;
-    const big = Math.random() < 0.25; // sometimes the long way round (>1 turn)
-    const az = orbit.az + dir * (big ? rand(320 * DEG, 520 * DEG) : rand(60 * DEG, 220 * DEG));
-    const r = Math.random();
+    const big = Math.random() < 0.35; // often the long way round (>1 turn)
+    const az = orbit.az + dir * (big ? rand(320 * DEG, 520 * DEG) : rand(80 * DEG, 240 * DEG));
+    let r = Math.random();
+    if (lastClose) r = 0.34 + r * 0.66; // just had a close-up — pull away first
+    lastClose = r < 0.34; // the first two shot types below are the close ones
     let el: number, dist: number, lookY: number, dur: number;
-    if (r < 0.12) {
+    if (r < 0.1) {
       el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11); // push-in
-    } else if (r < 0.3) {
+    } else if (r < 0.34) {
+      el = rand(-18 * DEG, 6 * DEG); dist = rand(56, 80); lookY = rand(3, 11); dur = rand(9, 14); // from-below
+    } else if (r < 0.48) {
       el = rand(48 * DEG, 76 * DEG); dist = rand(78, 116); lookY = rand(-3, 2); dur = rand(7, 11); // rise-above
-    } else if (r < 0.66) {
-      el = rand(-18 * DEG, 6 * DEG); dist = rand(54, 78); lookY = rand(3, 11); dur = rand(11, 17); // from-below (dominant)
-    } else if (r < 0.84) {
+    } else if (r < 0.7) {
       el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 14); // mid orbit
-    } else if (r < 0.95) {
+    } else if (r < 0.88) {
       // wide establishing shot: pull right back and aim a little upward, so
       // the sky — sun, moon, high jet surges — shares the frame with the tower
       el = rand(2 * DEG, 20 * DEG); dist = rand(150, 250); lookY = rand(8, 24); dur = rand(12, 18);
     } else {
-      // rare planet shot: pull way out until the fountain is a jewel on its
+      // planet shot: pull way out until the fountain is a jewel on its
       // little world — curvature, stars and the orbiting sun/moon fill the
       // frame. (Capped at 550: the camera must stay inside the sky dome.)
       el = rand(4 * DEG, 18 * DEG); dist = rand(300, 550); lookY = rand(0, 16); dur = rand(16, 24);
@@ -552,10 +559,9 @@ if (AUTO) {
 
   let holdDir = 1;
   let lastNow = 0;
-  // Pattern-change cadence, in simulated midnights. 4 days ≈ 2 minutes of wall
-  // time at 27s/day — the same pacing as the original "every 2 days" spec,
-  // which was written when a day lasted 55s (time has been doubled since).
-  const PATTERN_DAYS = 4;
+  // Pattern-change cadence, in simulated midnights: fresh colours + patterns
+  // at EVERY midnight (~27s of wall time per day).
+  const PATTERN_DAYS = 1;
   let lastDayCount = 0;
 
   autoTick = (now: number) => {

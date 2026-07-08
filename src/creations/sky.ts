@@ -6,6 +6,7 @@ import * as THREE from "three";
 // hashed stars that twinkle in after dark. The pool's mirror reflects it, so
 // the water picks up the sky for free.
 export interface SkyUniforms {
+  [uniform: string]: THREE.IUniform; // ShaderMaterial.uniforms needs the index signature
   uZenith: { value: THREE.Color };
   uHorizon: { value: THREE.Color };
   uNight: { value: number };

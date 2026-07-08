@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { makeStrip } from "../patterns";
+import { newScheme } from "../palette";
 import { createMusic } from "../music";
 import { createFireVolume } from "../fire";
 import { makeSoftSprite, makeDropSprite, makeParticleMaterial } from "../points";
@@ -11,6 +12,10 @@ import { createSun, createMoon } from "./celestial";
 import { createPlanet } from "./planet";
 import { createSkyDome } from "./sky";
 import { createPool } from "./water";
+
+// Chance that a build/recolor comes out black & white. Deliberately rare — a
+// B&W fountain is a striking exception, not a regular in the rotation.
+const MONO_CHANCE = 0.08;
 
 // Agam's Fire & Water Fountain (Dizengoff Square): five stacked rings, profile
 // bulging with a big, tall middle ring. Each ring is a ZIGZAG accordion of
@@ -49,7 +54,7 @@ export function createFountain(
   const ribSide = (2 * amp) / Math.sin(Math.PI / 3);
   // Sometimes the WHOLE fountain is black & white (never just one ring). Rolled
   // every build (it's a colour decision), so re-clicks can move in/out of B&W.
-  const monoRender = forceColor ? false : Math.random() < 0.25;
+  const monoRender = forceColor ? false : Math.random() < MONO_CHANCE;
   // Always the same neutral gray background (keeps both colour and B&W legible).
   const background = 0xccced0;
   const maxR = Math.max(...RADII);
@@ -599,7 +604,9 @@ export function createFountain(
       // ---- in-place pattern morph: start ----
       if (pendingRecolor) {
         pendingRecolor = false;
-        const newMono = Math.random() < 0.25; // same B&W odds as a fresh build
+        newScheme(); // swap the palette too — a recolor without a new scheme
+        // only reshuffles patterns within the same colours
+        const newMono = Math.random() < MONO_CHANCE; // same B&W odds as a fresh build
         const items: Morph["items"] = [];
         const caps: Morph["caps"] = [];
         for (const r of morphRings) {
