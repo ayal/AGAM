@@ -227,67 +227,93 @@ export function mountTypography(
   };
   sync(); // normalize the URL on entry (e.g. text=pick → text=top)
 
+  // Dark glass inspector, set in Space Grotesk (already loaded for the art):
+  // custom-styled selects/sliders/fields so it reads as part of the piece,
+  // not a browser default form.
+  const styleEl = document.createElement("style");
+  styleEl.textContent = `
+.tdp{width:266px;max-height:calc(100vh - 32px);overflow-y:auto;padding:16px 16px 14px;border-radius:16px;
+  color:#ececee;background:rgba(19,19,22,.72);backdrop-filter:blur(24px) saturate(1.4);
+  -webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 12px 40px rgba(0,0,0,.38);pointer-events:auto;
+  font:11.5px/1.4 'Space Grotesk','Helvetica Neue',Arial,sans-serif;}
+.tdp h3{margin:0 0 12px;font-size:10.5px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:#98989f;}
+.tdp .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 8px;}
+.tdp label{display:block;color:#84848d;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;}
+.tdp .v{float:right;color:#cfcfd6;font-size:10px;letter-spacing:.04em;}
+.tdp select,.tdp input[type=text]{width:100%;box-sizing:border-box;margin-top:4px;padding:6px 9px;
+  background:rgba(255,255,255,.07);color:#ececee;border:1px solid rgba(255,255,255,.1);border-radius:8px;
+  font:inherit;outline:none;appearance:none;-webkit-appearance:none;}
+.tdp select{padding-right:22px;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="8" height="5"><path d="M0 0l4 5 4-5z" fill="%23909096"/></svg>');
+  background-repeat:no-repeat;background-position:right 9px center;cursor:pointer;}
+.tdp option{color:#141417;background:#fff;}
+.tdp select:focus,.tdp input[type=text]:focus{border-color:rgba(255,255,255,.32);}
+.tdp .sliders{margin-top:11px;}
+.tdp .sliders label{margin-top:7px;}
+.tdp input[type=range]{width:100%;height:20px;margin:1px 0 0;background:none;appearance:none;-webkit-appearance:none;cursor:pointer;}
+.tdp input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:1px;background:rgba(255,255,255,.2);}
+.tdp input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+  background:#ececee;margin-top:-5px;box-shadow:0 1px 4px rgba(0,0,0,.45);}
+.tdp input[type=range]::-moz-range-track{height:2px;background:rgba(255,255,255,.2);}
+.tdp input[type=range]::-moz-range-thumb{width:12px;height:12px;border:none;border-radius:50%;background:#ececee;}
+.tdp .words{margin-top:11px;display:grid;gap:8px;}
+.tdp .actions{display:flex;gap:6px;margin-top:14px;}
+.tdp button{border:none;cursor:pointer;border-radius:9px;padding:8px 10px;font:inherit;letter-spacing:.05em;
+  transition:filter .15s ease;}
+.tdp button:hover{filter:brightness(1.15);}
+.tdp .primary{flex:1;background:#ececee;color:#141417;font-weight:500;}
+.tdp .ghost{background:rgba(255,255,255,.08);color:#d9d9df;border:1px solid rgba(255,255,255,.13);}
+.tdp .hint{margin-top:10px;color:#75757d;font-size:9.5px;line-height:1.55;letter-spacing:.05em;}`;
+  document.head.appendChild(styleEl);
+
   const panel = document.createElement("div");
+  panel.className = "tdp";
   panel.style.cssText =
     `position:${fixed ? "fixed" : "absolute"};top:${fixed ? "14px" : "2%"};right:${fixed ? "14px" : "2%"};` +
-    `z-index:${fixed ? 10000 : 5};width:238px;padding:12px 14px 14px;border-radius:14px;` +
-    "max-height:calc(100vh - 40px);overflow-y:auto;" +
-    "background:rgba(246,244,238,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);" +
-    "box-shadow:0 2px 14px rgba(0,0,0,.18);font:12px 'Helvetica Neue',Arial,sans-serif;" +
-    "color:#1d1d1f;pointer-events:auto;";
-  const ctl =
-    "width:100%;box-sizing:border-box;margin:2px 0 8px;font:12px 'Helvetica Neue',Arial,sans-serif;" +
-    "accent-color:#1d1d1f;";
-  const lbl = "display:flex;justify-content:space-between;color:#5b5e63;letter-spacing:.04em;";
+    `z-index:${fixed ? 10000 : 5};`;
   const pct = (v: number) => Math.round(v * 100) + "%";
-  const sel = (k: string, cur: string, opts: [string, string][]) =>
-    `<select data-k="${k}" style="${ctl}">` +
+  const sel = (label: string, k: string, cur: string, opts: [string, string][]) =>
+    `<label>${label}<select data-k="${k}">` +
     opts.map(([v, l]) => `<option value="${v}"${v === cur ? " selected" : ""}>${l}</option>`).join("") +
-    "</select>";
+    "</select></label>";
+  const slider = (label: string, k: string, cur: number, min: number, max: number, step: number) =>
+    `<label>${label}<span class="v" data-v="${k}">${pct(cur)}</span></label>` +
+    `<input data-k="${k}" type="range" min="${min}" max="${max}" step="${step}" value="${cur * 100}">`;
+  const field = (label: string, k: string, cur: string) =>
+    `<label>${label}<input data-k="${k}" type="text" value="${cur}"></label>`;
   panel.innerHTML =
-    '<div style="font-weight:600;letter-spacing:.08em;margin-bottom:10px;">TEXT DESIGN</div>' +
-    `<div style="${lbl}">layout</div>` +
-    sel("variant", state.variant, VARIANTS.map((v) => [v, v] as [string, string])) +
-    `<div style="${lbl}">font</div>` +
-    sel("font", state.font, [
-      ["auto", "auto (per layout)"], ["serif", "serif · Cormorant"],
-      ["grotesk", "sans · Space Grotesk"], ["mono", "mono · Space Mono"], ["poster", "display · Anton"],
+    "<h3>Text design</h3>" +
+    '<div class="grid">' +
+    sel("layout", "variant", state.variant, VARIANTS.map((v) => [v, v] as [string, string])) +
+    sel("font", "font", state.font, [
+      ["auto", "auto"], ["serif", "Cormorant"], ["grotesk", "Grotesk"], ["mono", "Mono"], ["poster", "Anton"],
     ]) +
-    `<div style="${lbl}">weight</div>` +
-    sel("weight", state.weight, [["200", "extralight"], ["300", "light"], ["400", "regular"]]) +
-    `<div style="${lbl}">case</div>` +
-    sel("tcase", state.tcase, [
-      ["none", "as written"], ["lower", "lowercase"], ["upper", "UPPERCASE"], ["smallcaps", "small caps"],
+    sel("weight", "weight", state.weight, [["200", "extralight"], ["300", "light"], ["400", "regular"]]) +
+    sel("case", "tcase", state.tcase, [
+      ["none", "as written"], ["lower", "lowercase"], ["upper", "uppercase"], ["smallcaps", "small caps"],
     ]) +
-    `<div style="${lbl}">color</div>` +
-    sel("tint", state.tint, [["white", "white"], ["cream", "cream"], ["gold", "gold"], ["ink", "ink"]]) +
-    `<div style="${lbl}">blend</div>` +
-    sel("blend", state.blend, [
+    sel("color", "tint", state.tint, [["white", "white"], ["cream", "cream"], ["gold", "gold"], ["ink", "ink"]]) +
+    sel("blend", "blend", state.blend, [
       ["none", "none"], ["overlay", "overlay"], ["soft-light", "soft light"], ["difference", "difference"],
     ]) +
-    `<div style="${lbl}">size <span data-v="scale">${pct(state.scale)}</span></div>` +
-    `<input data-k="scale" type="range" min="40" max="250" step="5" value="${state.scale * 100}" style="${ctl}">` +
-    `<div style="${lbl}">tracking <span data-v="track">${pct(state.track)}</span></div>` +
-    `<input data-k="track" type="range" min="0" max="300" step="10" value="${state.track * 100}" style="${ctl}">` +
-    `<div style="${lbl}">opacity <span data-v="alpha">${pct(state.alpha)}</span></div>` +
-    `<input data-k="alpha" type="range" min="10" max="100" step="5" value="${state.alpha * 100}" style="${ctl}">` +
-    `<div style="${lbl}">shadow <span data-v="shadow">${pct(state.shadow)}</span></div>` +
-    `<input data-k="shadow" type="range" min="0" max="100" step="5" value="${state.shadow * 100}" style="${ctl}">` +
-    `<div style="${lbl}">name</div><input data-k="name" value="${state.name}" style="${ctl}">` +
-    `<div style="${lbl}">work</div><input data-k="work" value="${state.work}" style="${ctl}">` +
-    `<div style="${lbl}">years</div><input data-k="years" value="${state.years}" style="${ctl}">` +
-    '<div style="display:flex;gap:6px;">' +
-    '<button data-copy style="flex:1;padding:7px 0;border:none;border-radius:9px;cursor:pointer;' +
-    "background:#1d1d1f;color:#f6f4ee;font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.06em;\">" +
-    "copy design link</button>" +
-    '<button data-random title="roll a random design" style="padding:7px 10px;border:1px solid #c9cbce;' +
-    "border-radius:9px;cursor:pointer;background:none;color:#1d1d1f;" +
-    "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.06em;\">random</button>" +
-    '<button data-reset title="back to defaults" style="padding:7px 10px;border:1px solid #c9cbce;' +
-    "border-radius:9px;cursor:pointer;background:none;color:#1d1d1f;" +
-    "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.06em;\">reset</button></div>" +
-    '<div style="margin-top:7px;color:#8a8d92;font-size:10.5px;line-height:1.5;">' +
-    "every change updates the URL — send it to share this exact design</div>";
+    "</div>" +
+    '<div class="sliders">' +
+    slider("size", "scale", state.scale, 40, 250, 5) +
+    slider("tracking", "track", state.track, 0, 300, 10) +
+    slider("opacity", "alpha", state.alpha, 10, 100, 5) +
+    slider("shadow", "shadow", state.shadow, 0, 100, 5) +
+    "</div>" +
+    '<div class="words">' +
+    field("name", "name", state.name) +
+    field("work", "work", state.work) +
+    field("years", "years", state.years) +
+    "</div>" +
+    '<div class="actions">' +
+    '<button data-copy class="primary">copy design link</button>' +
+    '<button data-random class="ghost" title="roll a random design">random</button>' +
+    '<button data-reset class="ghost" title="back to defaults">reset</button>' +
+    "</div>" +
+    '<div class="hint">every change updates the URL — send it to share this exact design</div>';
   parent.appendChild(panel);
 
   panel.addEventListener("input", (e) => {
