@@ -5,6 +5,7 @@ import type { Creation } from "./creation";
 import { createAgamograph } from "./creations/agamograph";
 import { createFountain, rollFountainModes, type FountainModes } from "./creations/fountain";
 import { newScheme } from "./palette";
+import { mountTypography } from "./typography";
 
 // ---------------------------------------------------------------------------
 // Shared scene / renderer / camera / controls
@@ -20,6 +21,10 @@ camera.updateProjectionMatrix();
 // camera glides on its own, and the render re-rolls itself over time. (See the
 // "Auto / kiosk mode" section below.)
 const AUTO = new URLSearchParams(location.search).has("auto");
+// ?near → alternative glide composition that stays close on the fountain
+// (Omer: "not too much of the surroundings"); without it the shot mix is the
+// original one. Combines with ?auto and ?text for the memorial-screen options.
+const NEAR = new URLSearchParams(location.search).has("near");
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setClearColor(new THREE.Color(0xf4f1e8)); // gallery-wall cream
@@ -52,7 +57,7 @@ controls.enablePan = false; // keep the orbit centred (clean glide handoff)
 controls.minPolarAngle = 0.18; // ~10° from top (matches the glide's aerial)
 controls.maxPolarAngle = 1.95; // ~112°: can look up from below, but not under the pool
 controls.minDistance = 32;
-controls.maxDistance = 1000; // deep-space pull-back, still inside the sky dome (r≈1120)
+controls.maxDistance = 1900; // deep-space pull-back, still inside the sky dome (r≈1984)
 controls.enabled = !AUTO; // kiosk mode is a locked display — ignore all input
 
 const trackball = new TrackballControls(camera, renderer.domElement);
@@ -437,6 +442,19 @@ if (AUTO) {
 }
 
 // ---------------------------------------------------------------------------
+// Memorial typography (?text=<variant>) and the designer panel (?design):
+// dedication lines over the art; the panel tunes them live and mirrors every
+// knob into the URL, so a link reproduces the exact design. Works in both
+// regular and kiosk mode, so options can be previewed anywhere.
+// ---------------------------------------------------------------------------
+if (!THUMB) {
+  const q = new URLSearchParams(location.search);
+  if (q.get("text") || q.has("design")) {
+    mountTypography(frameEl ?? document.body, !frameEl, q);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Camera glide (attract loop) — runs in BOTH modes, governs the fountain only.
 //   • kiosk (?auto): always on, input locked.
 //   • regular: glides on its own until the user grabs the camera (drag / zoom),
@@ -475,10 +493,17 @@ if (AUTO) {
   };
 
   // A small repertoire of shot types keeps the motion varied and intentional.
-  // The fountain stays the anchor, but close-ups never chain back-to-back:
+  // The fountain stays the anchor, and close-ups never chain back-to-back:
   // after one, the next leg is pushed out to a mid/wide/planet shot, so the
   // loop keeps circulating and showing the scene from new angles instead of
   // lingering at the basin.
+  // Two shot mixes (cumulative probability cut-offs): the default one, and the
+  // ?near variant where ~86% of legs stay at close/mid range and wide (10%) /
+  // planet (4%) become rare punctuation — the composition stays on the
+  // fountain, not "too much of the surroundings".
+  const MIX = NEAR
+    ? { pushIn: 0.16, below: 0.44, rise: 0.58, mid: 0.86, wide: 0.96 }
+    : { pushIn: 0.1, below: 0.34, rise: 0.48, mid: 0.7, wide: 0.88 };
   let lastClose = false;
   const pickLeg = (now: number) => {
     from = { ...orbit };
@@ -486,18 +511,18 @@ if (AUTO) {
     const big = Math.random() < 0.35; // often the long way round (>1 turn)
     const az = orbit.az + dir * (big ? rand(320 * DEG, 520 * DEG) : rand(80 * DEG, 240 * DEG));
     let r = Math.random();
-    if (lastClose) r = 0.34 + r * 0.66; // just had a close-up — pull away first
-    lastClose = r < 0.34; // the first two shot types below are the close ones
+    if (lastClose) r = MIX.below + r * (1 - MIX.below); // just had a close-up — pull away first
+    lastClose = r < MIX.below; // the first two shot types below are the close ones
     let el: number, dist: number, lookY: number, dur: number;
-    if (r < 0.1) {
+    if (r < MIX.pushIn) {
       el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11); // push-in
-    } else if (r < 0.34) {
+    } else if (r < MIX.below) {
       el = rand(-18 * DEG, 6 * DEG); dist = rand(56, 80); lookY = rand(3, 11); dur = rand(9, 14); // from-below
-    } else if (r < 0.48) {
+    } else if (r < MIX.rise) {
       el = rand(48 * DEG, 76 * DEG); dist = rand(78, 116); lookY = rand(-3, 2); dur = rand(7, 11); // rise-above
-    } else if (r < 0.7) {
+    } else if (r < MIX.mid) {
       el = rand(12 * DEG, 40 * DEG); dist = rand(DIST[0], DIST[1]); lookY = rand(LOOKY[0], LOOKY[1]); dur = rand(9, 14); // mid orbit
-    } else if (r < 0.88) {
+    } else if (r < MIX.wide) {
       // wide establishing shot: pull right back and aim a little upward, so
       // the sky — sun, moon, high jet surges — shares the frame with the tower
       el = rand(2 * DEG, 20 * DEG); dist = rand(150, 250); lookY = rand(8, 24); dur = rand(12, 18);

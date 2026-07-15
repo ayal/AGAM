@@ -87,7 +87,7 @@ export function createSkyDome(skyR: number): SkyDome {
       }
     `,
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(skyR * 2.6, 48, 32), skyMat);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(skyR * 3.2, 48, 32), skyMat);
   mesh.renderOrder = -1; // paint first; everything else draws over it
   mesh.frustumCulled = false; // the camera lives inside the sphere
   return { mesh, uniforms };

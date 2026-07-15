@@ -9,7 +9,7 @@ import type { Creation } from "../creation";
 // the fountain's world, built in cohesive modules (see each file):
 import { createNoise } from "./noise";
 import { createSun, createMoon } from "./celestial";
-import { createPlanet } from "./planet";
+import { createPlanet, createClouds } from "./planet";
 import { createSkyDome } from "./sky";
 import { createPool } from "./water";
 
@@ -110,6 +110,7 @@ export function createFountain(
   const moonE = Math.PI;
   const moonK = 1;
   group.add(sunDisc, moonDisc);
+  const sunWorld = new THREE.Vector3(); // per-frame scratch for the clouds' true sun direction
   // pre-allocated palette for the per-frame day/night blends.
   // Per-session random sky character: duskMood (0=golden, 1=crimson),
   // keyStrength (sun brightness), moonStrength (full-moon brightness).
@@ -156,6 +157,8 @@ export function createFountain(
   const PLANET_R = 320;
   const planetMesh = createPlanet(noise, PLANET_R, poolY);
   group.add(planetMesh);
+  const clouds = createClouds(PLANET_R, poolY);
+  group.add(clouds.points);
 
   // Darker, slightly see-through neutral fill for the upper levels (ring drums +
   // central column) — no water, no reflection.
@@ -575,6 +578,7 @@ export function createFountain(
       cubeRT.dispose(); // free the cube render target
       sprite.dispose(); // particle sprites (not reachable via material.map)
       dropSprite.dispose();
+      clouds.dispose();
     },
     update: (time, autoRotate, env) => {
       const dt = Math.min(0.05, Math.max(0, time - lastT));
@@ -701,6 +705,9 @@ export function createFountain(
       key.position.set(sxp, Math.max(syp, 8), szp);
       key.intensity = keyStrength * dayL;
       key.color.lerpColors(KEY_LOW, KEY_HIGH, Math.min(1, Math.max(0, se / 0.55)));
+      // clouds: lit per-sprite by their TRUE angle to the sun (the key light's
+      // own y is clamped above the horizon, so it can't gate the night side)
+      if (env) clouds.update(env.renderer, key, dayL, duskL, sunDisc.getWorldPosition(sunWorld).normalize(), dt);
       fill.position.set(uem * SKY_R, Math.max(uum * SKY_R, 12), usm * SKY_R);
       // fill / moonlight is a gentler bounce — keeps shadow sides readable but
       // doesn't compete with the key, so there's always a lit and a dark side.
