@@ -15,21 +15,34 @@ const NAME_DEFAULT = "Yaacov Agam";
 const WORK_DEFAULT = "Fire and Water";
 const YEARS_DEFAULT = "1928–2026";
 
-// One stylesheet fetch for the whole menu (only when the overlay is active):
-// Cormorant Garamond (engraved serif), Space Grotesk (minimal sans),
-// Space Mono (exhibit label), Anton (poster display).
+// One stylesheet fetch for the whole menu (only when the overlay is active).
+// Google Fonts only downloads the binaries of families actually used, so the
+// menu can stay broad: Cormorant (engraved serif), Fraunces (warm modern
+// serif), Italiana (hairline display serif), Cinzel (Roman inscription caps —
+// carved-in-stone register), Space Grotesk (minimal sans), Syne (arty
+// geometric sans), Space Mono (exhibit label), Anton & Bebas (poster display).
 const FONT_URL =
   "https://fonts.googleapis.com/css2" +
   "?family=Anton" +
+  "&family=Bebas+Neue" +
+  "&family=Cinzel:wght@400;500" +
   "&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300" +
+  "&family=Fraunces:ital,wght@0,300;0,400;1,300" +
+  "&family=Italiana" +
   "&family=Space+Grotesk:wght@300;400" +
   "&family=Space+Mono" +
+  "&family=Syne:wght@400;500" +
   "&display=swap";
 const FAMS: Record<string, string> = {
   serif: "font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif;",
+  fraunces: "font-family:'Fraunces',Georgia,serif;",
+  italiana: "font-family:'Italiana',Georgia,serif;",
+  cinzel: "font-family:'Cinzel',Georgia,serif;",
   grotesk: "font-family:'Space Grotesk','Helvetica Neue',Arial,sans-serif;",
+  syne: "font-family:'Syne','Helvetica Neue',Arial,sans-serif;",
   mono: "font-family:'Space Mono',ui-monospace,Menlo,monospace;",
   poster: "font-family:'Anton',Impact,'Arial Narrow',sans-serif;font-weight:400;",
+  bebas: "font-family:'Bebas Neue',Impact,'Arial Narrow',sans-serif;font-weight:400;",
 };
 const VARIANTS = ["top", "topbottom", "corners", "grotesk", "mono", "poster", "side"];
 
@@ -56,6 +69,8 @@ export function mountTypography(
     tint: params.get("th") || "white", // white | cream | gold | ink
     blend: params.get("tb") || "none", // none | overlay | soft-light | difference
     shadow: params.get("td") !== null && !isNaN(Number(params.get("td"))) ? Number(params.get("td")) : 1,
+    italic: params.get("ti") || "0",
+    rule: params.get("tr") || "none", // hairline ornament in stacked layouts
     name: params.get("name") || NAME_DEFAULT,
     work: params.get("work") || WORK_DEFAULT,
     years: params.get("years") || YEARS_DEFAULT,
@@ -94,6 +109,7 @@ export function mountTypography(
     "position:absolute;pointer-events:none;user-select:none;" +
     `font-weight:${state.weight};line-height:1.25;` +
     `color:rgba(${TINTS[state.tint] ?? TINTS.white},${(state.alpha * alphaMul).toFixed(3)});` +
+    (state.italic === "1" ? "font-style:italic;" : "") +
     (CASES[state.tcase] ?? "") +
     (state.blend !== "none" ? `mix-blend-mode:${state.blend};` : "") +
     (state.shadow > 0
@@ -113,6 +129,16 @@ export function mountTypography(
     w.append(...lines);
     return [w];
   };
+  // optional hairline rule between lines in stacked layouts (engraved-plaque
+  // ornament); inherits the current tint so it recolours with the text
+  const ornament = (left = false) => {
+    if (state.rule !== "rule") return [];
+    const d = document.createElement("div");
+    d.style.cssText =
+      `width:2.8em;height:1px;background:rgba(${TINTS[state.tint] ?? TINTS.white},` +
+      `${(state.alpha * 0.75).toFixed(3)});margin:.6em ${left ? "0" : "auto"} .5em;`;
+    return [d];
+  };
 
   // Bottom corner items sit at 9% so they clear the credit (kiosk bottom-right)
   // and the HUD clock (regular bottom-left); centred bottom text has no such
@@ -124,11 +150,13 @@ export function mountTypography(
       top: () => stack("top:3.4%;left:0;right:0;text-align:center;", [
         el(name, fam("serif") + ls(0.1) + fs(30, 5.4)),
         el(work, fam("serif") + "font-style:italic;" + ls(0.14) + fs(17, 2.9), 0.9),
+        ...ornament(),
         el(years, fam("serif") + ls(0.3) + fs(14, 2.3) + "margin-top:.25em;"),
       ]),
       topbottom: () => [
         ...stack("top:3.4%;left:0;right:0;text-align:center;", [
           el(name, fam("serif") + ls(0.1) + fs(26, 4.6)),
+          ...ornament(),
           el(work, fam("serif") + "font-style:italic;" + ls(0.14) + fs(16, 2.6), 0.9),
         ]),
         el(years, fam("serif") +
@@ -151,11 +179,13 @@ export function mountTypography(
       mono: () => stack("bottom:3.6%;left:0;right:0;text-align:center;", [
         el(name, fam("mono") + ls(0.08) + fs(13, 2.1)),
         el(work, fam("mono") + ls(0.14) + fs(12, 1.9), 0.85),
+        ...ornament(),
         el(years, fam("mono") + ls(0.25) + fs(11, 1.7) + "margin-top:.2em;", 0.75),
       ]),
       // display-type poster block, anchored bottom-left
       poster: () => stack(`bottom:${posterBottom};left:3%;`, [
         el(name, fam("poster") + ls(0.03) + "line-height:1;" + fs(34, 7), 0.85),
+        ...ornament(true),
         el(`${work} · ${years}`, fam("grotesk") + ls(0.3) + fs(13, 2) + "margin-top:.4em;", 0.85),
       ]),
       // vertical rails: name & work up the left edge, years up the right.
@@ -220,6 +250,8 @@ export function mountTypography(
     put("th", state.tint, "white");
     put("tb", state.blend, "none");
     put("td", String(state.shadow), "1");
+    put("ti", state.italic, "0");
+    put("tr", state.rule, "none");
     put("name", state.name, NAME_DEFAULT);
     put("work", state.work, WORK_DEFAULT);
     put("years", state.years, YEARS_DEFAULT);
@@ -236,8 +268,13 @@ export function mountTypography(
   color:#ececee;background:rgba(19,19,22,.72);backdrop-filter:blur(24px) saturate(1.4);
   -webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(255,255,255,.09);
   box-shadow:0 12px 40px rgba(0,0,0,.38);pointer-events:auto;
-  font:11.5px/1.4 'Space Grotesk','Helvetica Neue',Arial,sans-serif;}
-.tdp h3{margin:0 0 12px;font-size:10.5px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:#98989f;}
+  font:11.5px/1.4 'Space Grotesk','Helvetica Neue',Arial,sans-serif;
+  transition:opacity .3s ease;}
+.tdp:not(:hover):not(.dragging){opacity:.07;backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:none;box-shadow:none;}
+.tdp h3{margin:0 0 12px;font-size:10.5px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:#98989f;
+  cursor:grab;user-select:none;touch-action:none;}
+.tdp h3:active{cursor:grabbing;}
 .tdp .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 8px;}
 .tdp label{display:block;color:#84848d;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;}
 .tdp .v{float:right;color:#cfcfd6;font-size:10px;letter-spacing:.04em;}
@@ -263,7 +300,19 @@ export function mountTypography(
 .tdp button:hover{filter:brightness(1.15);}
 .tdp .primary{flex:1;background:#ececee;color:#141417;font-weight:500;}
 .tdp .ghost{background:rgba(255,255,255,.08);color:#d9d9df;border:1px solid rgba(255,255,255,.13);}
-.tdp .hint{margin-top:10px;color:#75757d;font-size:9.5px;line-height:1.55;letter-spacing:.05em;}`;
+.tdp .hint{margin-top:10px;color:#75757d;font-size:9.5px;line-height:1.55;letter-spacing:.05em;}
+.tdp .fold{float:right;background:none;border:none;color:#98989f;cursor:pointer;padding:0 2px;
+  margin:-3px -2px 0 0;font:13px/1 inherit;letter-spacing:0;}
+.tdp .fold:hover{color:#ececee;}
+.tdp-pill{padding:7px 13px;border-radius:999px;cursor:pointer;pointer-events:auto;
+  color:#ececee;background:rgba(19,19,22,.72);backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);border:1px solid rgba(255,255,255,.12);
+  box-shadow:0 6px 24px rgba(0,0,0,.35);font:12px 'Space Grotesk','Helvetica Neue',Arial,sans-serif;
+  letter-spacing:.08em;}
+.tdp-pill{transition:opacity .3s ease;}
+.tdp-pill:not(:hover){opacity:.12;backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:none;box-shadow:none;}
+.tdp-pill:hover{filter:brightness(1.2);}`;
   document.head.appendChild(styleEl);
 
   const panel = document.createElement("div");
@@ -282,11 +331,13 @@ export function mountTypography(
   const field = (label: string, k: string, cur: string) =>
     `<label>${label}<input data-k="${k}" type="text" value="${cur}"></label>`;
   panel.innerHTML =
-    "<h3>Text design</h3>" +
+    '<h3>Text design<button class="fold" data-fold title="collapse panel">−</button></h3>' +
     '<div class="grid">' +
     sel("layout", "variant", state.variant, VARIANTS.map((v) => [v, v] as [string, string])) +
     sel("font", "font", state.font, [
-      ["auto", "auto"], ["serif", "Cormorant"], ["grotesk", "Grotesk"], ["mono", "Mono"], ["poster", "Anton"],
+      ["auto", "auto"], ["serif", "Cormorant"], ["fraunces", "Fraunces"], ["italiana", "Italiana"],
+      ["cinzel", "Cinzel"], ["grotesk", "Grotesk"], ["syne", "Syne"], ["mono", "Mono"],
+      ["poster", "Anton"], ["bebas", "Bebas"],
     ]) +
     sel("weight", "weight", state.weight, [["200", "extralight"], ["300", "light"], ["400", "regular"]]) +
     sel("case", "tcase", state.tcase, [
@@ -296,6 +347,8 @@ export function mountTypography(
     sel("blend", "blend", state.blend, [
       ["none", "none"], ["overlay", "overlay"], ["soft-light", "soft light"], ["difference", "difference"],
     ]) +
+    sel("style", "italic", state.italic, [["0", "roman"], ["1", "italic"]]) +
+    sel("ornament", "rule", state.rule, [["none", "none"], ["rule", "hairline rule"]]) +
     "</div>" +
     '<div class="sliders">' +
     slider("size", "scale", state.scale, 40, 250, 5) +
@@ -315,6 +368,51 @@ export function mountTypography(
     "</div>" +
     '<div class="hint">every change updates the URL — send it to share this exact design</div>';
   parent.appendChild(panel);
+
+  // collapse to a small chip so the panel can get out of the art's way;
+  // design mode (and the URL) stay active — reopening is one click
+  const pill = document.createElement("button");
+  pill.className = "tdp-pill";
+  pill.textContent = "Aa";
+  pill.title = "open text design";
+  pill.style.cssText = panel.style.cssText + "display:none;";
+  parent.appendChild(pill);
+  (panel.querySelector("[data-fold]") as HTMLButtonElement).onclick = () => {
+    // the chip takes over the panel's (possibly dragged) position
+    pill.style.left = panel.style.left;
+    pill.style.top = panel.style.top;
+    pill.style.right = panel.style.right;
+    panel.style.display = "none";
+    pill.style.display = "block";
+  };
+  pill.onclick = () => {
+    pill.style.display = "none";
+    panel.style.display = "block";
+  };
+
+  // drag by the header to uncover whatever corner a layout uses
+  const head = panel.querySelector("h3") as HTMLElement;
+  let grab: { dx: number; dy: number } | null = null;
+  const parentOrigin = () =>
+    fixed ? { left: 0, top: 0 } : parent.getBoundingClientRect();
+  head.addEventListener("pointerdown", (e) => {
+    if ((e.target as HTMLElement).hasAttribute("data-fold")) return;
+    const r = panel.getBoundingClientRect();
+    grab = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    panel.classList.add("dragging"); // stay opaque even if the pointer outruns the panel
+    head.setPointerCapture(e.pointerId);
+  });
+  head.addEventListener("pointermove", (e) => {
+    if (!grab) return;
+    const o = parentOrigin();
+    panel.style.left = `${e.clientX - grab.dx - o.left}px`;
+    panel.style.top = `${e.clientY - grab.dy - o.top}px`;
+    panel.style.right = "auto";
+  });
+  head.addEventListener("pointerup", () => {
+    grab = null;
+    panel.classList.remove("dragging");
+  });
 
   panel.addEventListener("input", (e) => {
     const t = e.target as HTMLInputElement;
@@ -353,11 +451,13 @@ export function mountTypography(
     Number((Math.round((a + Math.random() * (b - a)) / step) * step).toFixed(2));
   (panel.querySelector("[data-random]") as HTMLButtonElement).onclick = () => {
     state.variant = pickOne(VARIANTS);
-    state.font = pickOne(["auto", "serif", "grotesk", "mono", "poster"]);
+    state.font = pickOne(["auto", "serif", "fraunces", "italiana", "cinzel", "grotesk", "syne", "mono", "poster", "bebas"]);
     state.weight = pickOne(["200", "300", "400"]);
     state.tcase = pickOne(["none", "lower", "upper", "smallcaps"]);
     state.tint = pickOne(["white", "cream", "gold"]);
     state.blend = pickOne(["none", "none", "overlay", "soft-light", "difference"]); // none weighted 2×
+    state.italic = pickOne(["0", "0", "0", "1"]); // roman weighted 3×
+    state.rule = pickOne(["none", "none", "rule"]);
     state.scale = roll(0.7, 1.8, 0.05);
     state.track = roll(0.2, 2.5, 0.1);
     state.alpha = roll(0.35, 1, 0.05);
@@ -370,7 +470,7 @@ export function mountTypography(
   // a reload guarantees state, URL and panel controls all match the defaults
   (panel.querySelector("[data-reset]") as HTMLButtonElement).onclick = () => {
     const q = new URLSearchParams(location.search);
-    for (const k of ["text", "tf", "ts", "tt", "to", "tw", "tc", "th", "tb", "td", "name", "work", "years"])
+    for (const k of ["text", "tf", "ts", "tt", "to", "tw", "tc", "th", "tb", "td", "ti", "tr", "name", "work", "years"])
       q.delete(k);
     location.href = location.pathname + "?" + q.toString();
   };

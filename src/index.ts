@@ -25,6 +25,11 @@ const AUTO = new URLSearchParams(location.search).has("auto");
 // (Omer: "not too much of the surroundings"); without it the shot mix is the
 // original one. Combines with ?auto and ?text for the memorial-screen options.
 const NEAR = new URLSearchParams(location.search).has("near");
+// typography overlay active → the homage credit is redundant (the overlay
+// itself names Agam and the work), so it shrinks to just the URL
+const TEXT_ON =
+  !!new URLSearchParams(location.search).get("text") ||
+  new URLSearchParams(location.search).has("design");
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setClearColor(new THREE.Color(0xf4f1e8)); // gallery-wall cream
@@ -176,11 +181,12 @@ function makeCredit(): HTMLAnchorElement {
   a.href = "https://ayal.github.io/AGAM";
   a.target = "_blank";
   a.rel = "noopener";
-  a.innerHTML =
-    '<span class="credit-full">Homage to Yaacov Agam&rsquo;s ' +
-    '<span style="font-style:italic">Fire &amp; Water Fountain</span> &middot; by Ayal Gelles</span>' +
-    '<span class="credit-short">by Ayal Gelles</span>' +
-    '<span class="credit-url">ayal.github.io/AGAM</span>'; // always shown — kiosk isn't clickable
+  a.innerHTML = TEXT_ON
+    ? '<span class="credit-url">ayal.github.io/AGAM</span>' // overlay already names Agam & the work
+    : '<span class="credit-full">Homage to Yaacov Agam&rsquo;s ' +
+      '<span style="font-style:italic">Fire &amp; Water Fountain</span> &middot; by Ayal Gelles</span>' +
+      '<span class="credit-short">by Ayal Gelles</span>' +
+      '<span class="credit-url">ayal.github.io/AGAM</span>'; // always shown — kiosk isn't clickable
   a.style.cssText =
     "display:inline-block;text-align:right;line-height:1.45;" +
     "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;" +
