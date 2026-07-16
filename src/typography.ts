@@ -50,7 +50,8 @@ export function mountTypography(
   parent: HTMLElement,
   fixed: boolean, // regular mode overlays the page; kiosk overlays the frame
   params: URLSearchParams,
-): void {
+  panelParent?: HTMLElement, // ?lobby: text goes on the 3D screen, but the
+): void { //                    designer panel belongs on the page, not in the scene
   const font = document.createElement("link");
   font.rel = "stylesheet";
   font.href = FONT_URL;
@@ -264,7 +265,7 @@ export function mountTypography(
   // not a browser default form.
   const styleEl = document.createElement("style");
   styleEl.textContent = `
-.tdp{width:266px;max-height:calc(100vh - 32px);overflow-y:auto;padding:16px 16px 14px;border-radius:16px;
+.tdp{width:266px;max-height:min(calc(100vh - 32px),94%);overflow-y:auto;padding:16px 16px 14px;border-radius:16px;
   color:#ececee;background:rgba(19,19,22,.72);backdrop-filter:blur(24px) saturate(1.4);
   -webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(255,255,255,.09);
   box-shadow:0 12px 40px rgba(0,0,0,.38);pointer-events:auto;
@@ -315,11 +316,13 @@ export function mountTypography(
 .tdp-pill:hover{filter:brightness(1.2);}`;
   document.head.appendChild(styleEl);
 
+  const host = panelParent ?? parent;
+  const pFixed = panelParent ? true : fixed;
   const panel = document.createElement("div");
   panel.className = "tdp";
   panel.style.cssText =
-    `position:${fixed ? "fixed" : "absolute"};top:${fixed ? "14px" : "2%"};right:${fixed ? "14px" : "2%"};` +
-    `z-index:${fixed ? 10000 : 5};`;
+    `position:${pFixed ? "fixed" : "absolute"};top:${pFixed ? "14px" : "2%"};right:${pFixed ? "14px" : "2%"};` +
+    `z-index:${pFixed ? 10000 : 5};`;
   const pct = (v: number) => Math.round(v * 100) + "%";
   const sel = (label: string, k: string, cur: string, opts: [string, string][]) =>
     `<label>${label}<select data-k="${k}">` +
@@ -367,7 +370,7 @@ export function mountTypography(
     '<button data-reset class="ghost" title="back to defaults">reset</button>' +
     "</div>" +
     '<div class="hint">every change updates the URL — send it to share this exact design</div>';
-  parent.appendChild(panel);
+  host.appendChild(panel);
 
   // collapse to a small chip so the panel can get out of the art's way;
   // design mode (and the URL) stay active — reopening is one click
@@ -376,7 +379,7 @@ export function mountTypography(
   pill.textContent = "Aa";
   pill.title = "open text design";
   pill.style.cssText = panel.style.cssText + "display:none;";
-  parent.appendChild(pill);
+  host.appendChild(pill);
   (panel.querySelector("[data-fold]") as HTMLButtonElement).onclick = () => {
     // the chip takes over the panel's (possibly dragged) position
     pill.style.left = panel.style.left;
@@ -394,7 +397,7 @@ export function mountTypography(
   const head = panel.querySelector("h3") as HTMLElement;
   let grab: { dx: number; dy: number } | null = null;
   const parentOrigin = () =>
-    fixed ? { left: 0, top: 0 } : parent.getBoundingClientRect();
+    pFixed ? { left: 0, top: 0 } : host.getBoundingClientRect();
   head.addEventListener("pointerdown", (e) => {
     if ((e.target as HTMLElement).hasAttribute("data-fold")) return;
     const r = panel.getBoundingClientRect();

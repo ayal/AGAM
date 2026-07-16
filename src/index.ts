@@ -17,10 +17,15 @@ const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerH
 camera.far = 4000; // default 2000 would clip the far side of the enlarged sky dome when zoomed way out
 camera.updateProjectionMatrix();
 
+// ?lobby → simulate the real installation on any monitor: the 4640×1760
+// screen letterboxed on a dark lobby wall, with bezel, glow and a glossy
+// floor reflection. Implies kiosk mode — what's inside the frame is exactly
+// what the physical screen runs.
+const LOBBY = new URLSearchParams(location.search).has("lobby");
 // ?auto → unattended kiosk mode for a big screen: no UI, locked input, the
 // camera glides on its own, and the render re-rolls itself over time. (See the
 // "Auto / kiosk mode" section below.)
-const AUTO = new URLSearchParams(location.search).has("auto");
+const AUTO = new URLSearchParams(location.search).has("auto") || LOBBY;
 // ?near → alternative glide composition that stays close on the fountain
 // (Omer: "not too much of the surroundings"); without it the shot mix is the
 // original one. Combines with ?auto and ?text for the memorial-screen options.
@@ -109,7 +114,9 @@ hud.style.cssText =
   "text-shadow:0 1px 18px rgba(0,0,0,.6),0 0 4px rgba(0,0,0,.35);" +
   "line-height:1;user-select:none;display:none;";
 if (!THUMB && !AUTO) {
-  document.body.appendChild(bar);
+  // text/design mode is a composition preview — no toolbar, no clock (same
+  // as kiosk); the credit stays, already minimal under the overlay
+  if (!TEXT_ON) document.body.appendChild(bar);
   const credit = makeCredit(); // bottom-right homage in regular mode
   credit.style.position = "fixed";
   credit.style.right = "14px";
@@ -118,7 +125,7 @@ if (!THUMB && !AUTO) {
   document.body.appendChild(credit);
   hud.style.cssText += "position:fixed;left:20px;bottom:18px;z-index:9999;" +
     "font-size:clamp(22px,3.8vh,40px);";
-  document.body.appendChild(hud);
+  if (!TEXT_ON) document.body.appendChild(hud);
 }
 
 // ---- inline stroke icons (Lucide-style; no icon font to load) -------------
@@ -228,6 +235,7 @@ let current: Creation | null = null;
 let currentName = "";
 let autoRotate = true;
 let autoTick: ((t: number) => void) | null = null; // per-frame camera glide (attract loop)
+let lobbyTick: ((t: number) => void) | null = null; // ?lobby: per-frame walk-through of the room
 let isManual = false; // regular mode: user has grabbed camera control
 let seedGlide: (() => void) | null = null; // (re)seed the glide orbit from the live camera
 let checkIdle: ((t: number) => void) | null = null; // regular mode: resume glide after idle
@@ -366,9 +374,13 @@ if (AUTO) {
   // title. Letterboxed so it looks identical on any monitor; on the real
   // screen it fills edge to edge — no letterboxing.
   const surround = document.createElement("div");
-  surround.style.cssText = "position:fixed;inset:0;z-index:1;";
   const frame = document.createElement("div");
-  frame.style.cssText = "position:relative;overflow:hidden;background:#ccced0;";
+  frame.style.cssText =
+    "position:relative;overflow:hidden;background:#ccced0;" +
+    (LOBBY
+      ? "position:absolute;border:3px solid #050506;will-change:transform;" +
+        "box-shadow:0 40px 110px rgba(0,0,0,.6),0 0 160px rgba(190,210,255,.12);"
+      : "");
   renderer.domElement.style.cssText = "display:block;width:100%;height:100%;";
   frame.appendChild(renderer.domElement); // move the canvas inside the frame
   // homage / attribution, bottom-right corner of the frame
@@ -379,23 +391,160 @@ if (AUTO) {
   credit.style.zIndex = "3";
   frame.appendChild(credit);
   // (no clock in kiosk — the sky itself tells the time)
-  surround.appendChild(frame);
-  document.body.appendChild(surround);
   frameEl = frame; // the shared glide loop fades re-renders inside this frame
 
   camera.fov = 52; // a tighter vertical FOV fills the short, wide frame
 
-  const frameLayout = () => {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    frame.style.width = `${vw}px`;
-    frame.style.height = `${vh}px`;
-    renderer.setSize(vw, vh, false);
-    camera.aspect = vw / vh;
+  if (!LOBBY) {
+    surround.style.cssText = "position:fixed;inset:0;z-index:1;";
+    surround.appendChild(frame);
+    document.body.appendChild(surround);
+    const frameLayout = () => {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      frame.style.width = `${vw}px`;
+      frame.style.height = `${vh}px`;
+      renderer.setSize(vw, vh, false);
+      camera.aspect = vw / vh;
+      camera.updateProjectionMatrix();
+      credit.style.fontSize = `${Math.max(11, Math.round(Math.min(vh * 0.014, vw * 0.022)))}px`;
+    };
+    frameLayout();
+    window.addEventListener("resize", frameLayout);
+  } else {
+    // ---- walkable lobby scene (?lobby) ------------------------------------
+    // A CSS-3D room around the live screen: perspective on the root, a world
+    // div carrying wall/floor/screen, and a first-person camera written into
+    // the world transform each frame. The screen keeps its real DOM (canvas +
+    // typography overlay + design panel) — it's simply placed in 3D, so what
+    // it shows is exactly what the physical 4640×1760 screen runs.
+    // World scale ≈ 400px per metre; y=0 is eye height (~1.6m), CSS y is down.
+    const SW = 1800, SH = Math.round(SW / (4640 / 1760)); // the screen (≈4.6×1.76m)
+    const FLOOR_Y = 640; // the floor, 1.6m below the eye
+    const SCREEN_Y = FLOOR_Y - 200 - SH / 2; // screen bottom ~0.5m above the floor
+    surround.style.cssText =
+      "position:fixed;inset:0;z-index:1;overflow:hidden;background:#17171c;cursor:grab;" +
+      "perspective:1000px;perspective-origin:50% 47%;";
+    const world = document.createElement("div");
+    world.style.cssText =
+      "position:absolute;left:50%;top:50%;width:0;height:0;transform-style:preserve-3d;" +
+      "will-change:transform;"; // keep children composited — re-rastering them per move flickers
+    // Small elements scaled up 4× in the transform: a 9600px-wide surface as
+    // an actual 9600px layer overflows the GPU tile budget and shows
+    // unrasterised black holes while moving; a 2400px texture scaled up is
+    // fully resident, and soft gradients survive the upscale losslessly.
+    const wall = document.createElement("div");
+    wall.style.cssText =
+      `position:absolute;left:-4800px;top:${FLOOR_Y - 3200}px;width:2400px;height:800px;` +
+      "transform-origin:0 0;transform:translateZ(-40px) scale3d(4,4,4);" +
+      "backface-visibility:hidden;will-change:transform;" +
+      "background:radial-gradient(760px 430px at 50% 80%,#4a4a55,transparent 78%)," +
+      "linear-gradient(#3a3a43,#2c2c33);";
+    const floor = document.createElement("div");
+    floor.style.cssText =
+      `position:absolute;left:-4800px;top:${FLOOR_Y}px;width:2400px;height:1600px;` +
+      "transform-origin:0 0;transform:scale3d(4,4,4) rotateX(90deg);" +
+      "backface-visibility:hidden;will-change:transform;" +
+      "background:radial-gradient(520px 230px at 50% 40px,rgba(160,180,255,.18),transparent 70%)," +
+      "linear-gradient(#34343d,#1f1f26 60%);";
+    const plaque = document.createElement("div");
+    plaque.textContent = "lobby preview · 4640 × 1760";
+    plaque.style.cssText =
+      `position:absolute;left:-400px;top:${SCREEN_Y + SH / 2 + 56}px;width:800px;text-align:center;` +
+      "color:#8a8a94;font:15px 'Space Grotesk','Helvetica Neue',Arial,sans-serif;" +
+      "letter-spacing:.3em;text-transform:uppercase;";
+    frame.style.width = `${SW}px`;
+    frame.style.height = `${SH}px`;
+    frame.style.left = `${-SW / 2}px`;
+    frame.style.top = `${SCREEN_Y - SH / 2}px`;
+    world.append(wall, floor, plaque, frame);
+    surround.appendChild(world);
+    document.body.appendChild(surround);
+    renderer.setSize(SW, SH, false);
+    camera.aspect = SW / SH;
     camera.updateProjectionMatrix();
-    credit.style.fontSize = `${Math.max(11, Math.round(Math.min(vh * 0.014, vw * 0.022)))}px`;
-  };
-  frameLayout();
-  window.addEventListener("resize", frameLayout);
+    credit.style.fontSize = "13px";
+    const hint = document.createElement("div");
+    hint.textContent = "drag to look · arrows / wasd to walk · scroll to dolly";
+    hint.style.cssText =
+      "position:fixed;left:50%;transform:translateX(-50%);bottom:2.4%;z-index:2;color:#7e7e88;" +
+      "font:11px 'Space Grotesk','Helvetica Neue',Arial,sans-serif;letter-spacing:.22em;" +
+      "text-transform:uppercase;pointer-events:none;";
+    document.body.appendChild(hint);
+
+    // first-person camera: facing = (sin yaw, 0, -cos yaw); pitch > 0 looks up
+    const cam = { x: 260, z: 1500, yaw: 0, pitch: 0.02 }; // screen centre ≈ eye level now
+    let lastInput = -30; // start on the auto-walk
+    const markInput = () => { lastInput = elapsed; };
+    const keys = new Set<string>();
+    const WALK = ["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"];
+    window.addEventListener("keydown", (e) => {
+      const k = e.key.toLowerCase();
+      if (!WALK.includes(k)) return;
+      keys.add(k);
+      markInput();
+      e.preventDefault();
+    });
+    window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+    let look: { x: number; y: number } | null = null;
+    surround.addEventListener("pointerdown", (e) => {
+      if ((e.target as HTMLElement).closest(".tdp,.tdp-pill,a,select,input,button")) return;
+      look = { x: e.clientX, y: e.clientY };
+      surround.setPointerCapture(e.pointerId);
+      surround.style.cursor = "grabbing";
+      markInput();
+    });
+    surround.addEventListener("pointermove", (e) => {
+      if (!look) return;
+      cam.yaw += (e.clientX - look.x) * 0.0022;
+      cam.pitch -= (e.clientY - look.y) * 0.0015;
+      look = { x: e.clientX, y: e.clientY };
+      markInput();
+    });
+    const endLook = () => { look = null; surround.style.cursor = "grab"; };
+    surround.addEventListener("pointerup", endLook);
+    surround.addEventListener("pointercancel", endLook);
+    surround.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      cam.x -= Math.sin(cam.yaw) * e.deltaY * 1.2;
+      cam.z += Math.cos(cam.yaw) * e.deltaY * 1.2;
+      markInput();
+    }, { passive: false });
+
+    let lastT = 0;
+    lobbyTick = (t) => {
+      const dt = Math.min(0.1, Math.max(0, t - lastT));
+      lastT = t;
+      // keyboard walk: up/down move along the facing, left/right turn, a/d strafe
+      const fwd = (keys.has("arrowup") || keys.has("w") ? 1 : 0) -
+        (keys.has("arrowdown") || keys.has("s") ? 1 : 0);
+      const turn = (keys.has("arrowright") ? 1 : 0) - (keys.has("arrowleft") ? 1 : 0);
+      const strafe = (keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0);
+      if (fwd || turn || strafe) markInput();
+      cam.yaw += turn * 1.1 * dt;
+      const sp = 1150 * dt;
+      cam.x += (Math.sin(cam.yaw) * fwd + Math.cos(cam.yaw) * strafe) * sp;
+      cam.z += (-Math.cos(cam.yaw) * fwd + Math.sin(cam.yaw) * strafe) * sp;
+      // idle → resume the slow auto-walk (ease toward the path, no snap)
+      if (t - lastInput > 14) {
+        const ax = Math.sin(t * 0.085) * 1050;
+        const az = 1250 + Math.sin(t * 0.057 + 1.4) * 520;
+        const ayaw = Math.atan2(-ax, az) * 0.8; // mostly keep facing the screen
+        const apitch = 0.02 + 0.04 * Math.sin(t * 0.045);
+        const k = Math.min(1, dt * 0.55);
+        cam.x += (ax - cam.x) * k;
+        cam.z += (az - cam.z) * k;
+        cam.yaw += (ayaw - cam.yaw) * k;
+        cam.pitch += (apitch - cam.pitch) * k;
+      }
+      // stay inside the room, keep the screen findable
+      cam.x = Math.max(-3800, Math.min(3800, cam.x));
+      cam.z = Math.max(430, Math.min(5200, cam.z));
+      cam.yaw = Math.max(-1.35, Math.min(1.35, cam.yaw));
+      cam.pitch = Math.max(-0.5, Math.min(0.55, cam.pitch));
+      world.style.transform =
+        `rotateX(${cam.pitch}rad) rotateY(${cam.yaw}rad) translate3d(${-cam.x}px,0px,${-cam.z}px)`;
+    };
+  }
 
   // ---- self-update / hardening for an unattended multi-day run ------------
   // A graceful reload: fade the whole screen to the backdrop colour, then
@@ -456,7 +605,9 @@ if (AUTO) {
 if (!THUMB) {
   const q = new URLSearchParams(location.search);
   if (q.get("text") || q.has("design")) {
-    mountTypography(frameEl ?? document.body, !frameEl, q);
+    // in the lobby scene the text lives on the 3D screen, but the designer
+    // panel stays flat on the page
+    mountTypography(frameEl ?? document.body, !frameEl, q, LOBBY ? document.body : undefined);
   }
 }
 
@@ -688,6 +839,7 @@ const animate = () => {
   if (gliding) autoTick?.(t);
   else if (trackball.enabled) trackball.update(); // free-tumble agamograph
   else controls.update(); // manual fountain control
+  lobbyTick?.(t); // ?lobby: walk the room (independent of the art's own glide)
   checkIdle?.(t);
   current?.update?.(t, autoRotate, { renderer, scene, camera, skyTime: skyT, spinGroup: !gliding });
   renderer.render(scene, camera);
