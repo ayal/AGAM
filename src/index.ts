@@ -656,11 +656,12 @@ if (!THUMB) {
   // loop keeps circulating and showing the scene from new angles instead of
   // lingering at the basin.
   // Two shot mixes (cumulative probability cut-offs): the default one, and the
-  // ?near variant where ~86% of legs stay at close/mid range and wide (10%) /
-  // planet (4%) become rare punctuation — the composition stays on the
-  // fountain, not "too much of the surroundings".
+  // ?near variant where ~60% of legs are the close, eye-level "person at the
+  // basin" shots (push-in + from-below) and they also run longer, ~88% stay at
+  // close/mid range, and wide (8%) / planet (4%) are rare punctuation — the
+  // composition stays on the fountain, not "too much of the surroundings".
   const MIX = NEAR
-    ? { pushIn: 0.16, below: 0.44, rise: 0.58, mid: 0.86, wide: 0.96 }
+    ? { pushIn: 0.26, below: 0.60, rise: 0.70, mid: 0.88, wide: 0.96 }
     : { pushIn: 0.1, below: 0.34, rise: 0.48, mid: 0.7, wide: 0.88 };
   let lastClose = false;
   const pickLeg = (now: number) => {
@@ -673,9 +674,11 @@ if (!THUMB) {
     lastClose = r < MIX.below; // the first two shot types below are the close ones
     let el: number, dist: number, lookY: number, dur: number;
     if (r < MIX.pushIn) {
-      el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = rand(7, 11); // push-in
+      // push-in — eye-level, close: linger longer in ?near (a person standing at the basin)
+      el = rand(8 * DEG, 22 * DEG); dist = rand(58, 80); lookY = rand(0, 7); dur = NEAR ? rand(11, 17) : rand(7, 11);
     } else if (r < MIX.below) {
-      el = rand(-18 * DEG, 6 * DEG); dist = rand(56, 80); lookY = rand(3, 11); dur = rand(9, 14); // from-below
+      // from-below — hold longer in ?near too
+      el = rand(-18 * DEG, 6 * DEG); dist = rand(56, 80); lookY = rand(3, 11); dur = NEAR ? rand(13, 19) : rand(9, 14);
     } else if (r < MIX.rise) {
       el = rand(48 * DEG, 76 * DEG); dist = rand(78, 116); lookY = rand(-3, 2); dur = rand(7, 11); // rise-above
     } else if (r < MIX.mid) {

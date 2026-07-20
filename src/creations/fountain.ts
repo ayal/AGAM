@@ -683,10 +683,10 @@ export function createFountain(
       const uum = Math.cos(LAT) * Math.cos(Hm);
       const usm = Math.sin(LAT) * Math.cos(Hm);
       moonDisc.position.set(uem * SKY_R, uum * SKY_R, usm * SKY_R);
-      // daylight 0..1. Offset 0.32 pulls dawn earlier & dusk later → even
-      // SHORTER night; divisor 0.36 lands full daylight at se≈0.04, so the
-      // full-brightness plateau (true panel colours in full glory) is even LONGER.
-      const dayL = Math.min(1, Math.max(0, (se + 0.32) / 0.36));
+      // daylight 0..1. Offset 0.42 pulls dawn earlier & dusk later → even
+      // SHORTER dark night (~9s); divisor 0.46 keeps full daylight landing at
+      // se≈0.04, so the full-brightness plateau stays long.
+      const dayL = Math.min(1, Math.max(0, (se + 0.42) / 0.46));
       const nightL = 1 - dayL;
       // sun near the horizon — wider band (0.38) = even LONGER sunsets
       const duskL = Math.max(0, 1 - Math.abs(se) / 0.38);
@@ -743,7 +743,7 @@ export function createFountain(
       // noon key:ambient ratio is ~3.5:1: sunlit faces stay bright (key is
       // untouched) while shadow faces and the planet's night side actually
       // fall dark. Night floor (0.5) keeps the artwork visible by moonlight.
-      hemi.intensity = 1.45 + 0.6 * dayL; // range 1.45–2.05 (brighter night floor, moon-independent; key at 4.0–5.2 dominates)
+      hemi.intensity = 1.6 + 0.6 * dayL; // range 1.6–2.2 (brighter night floor, moon-independent; key at 4.0–5.2 dominates)
       hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
       hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
       // horizon follows: day haze → GOLDEN dusk → night blue-gray; the clear
