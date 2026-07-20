@@ -121,7 +121,7 @@ export function createFountain(
   // (key 4.0–5.2 over ~1.3 day ambient). The old 1.6–2.5 moon hit 5:1 and
   // out-contrasted the sun; the 0.7–1.1 overcorrection left the moon barely
   // modelling the fountain and planet at all.
-  const moonStrength = 1.8 + Math.random() * 0.4;  // 1.8–2.2 (brighter moonlight)
+  const moonStrength = 2.1 + Math.random() * 0.4;  // 2.1–2.5 (brighter moonlight)
   const BG_DAY = new THREE.Color(0xb8d4e8); // proper pale-blue haze (was flat gray)
   const BG_NIGHT = new THREE.Color(0x6b7284);
   const BG_DUSK = new THREE.Color().lerpColors(new THREE.Color(0xdfb08a), new THREE.Color(0xff6030), duskMood);
@@ -729,7 +729,7 @@ export function createFountain(
       // noon key:ambient ratio is ~3.5:1: sunlit faces stay bright (key is
       // untouched) while shadow faces and the planet's night side actually
       // fall dark. Night floor (0.5) keeps the artwork visible by moonlight.
-      hemi.intensity = 0.8 + 0.6 * dayL; // range 0.8–1.4 (brighter night floor; key at 4.0–5.2 dominates)
+      hemi.intensity = 0.95 + 0.6 * dayL; // range 0.95–1.55 (brighter night floor; key at 4.0–5.2 dominates)
       hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
       hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
       // horizon follows: day haze → GOLDEN dusk → night blue-gray; the clear

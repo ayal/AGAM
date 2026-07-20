@@ -189,17 +189,17 @@ function makeCredit(): HTMLAnchorElement {
   a.target = "_blank";
   a.rel = "noopener";
   a.innerHTML = TEXT_ON
-    ? '<span class="credit-url">ayal.github.io/AGAM</span>' // overlay already names Agam & the work
+    ? '<span class="credit-url">https://ayal.github.io/AGAM</span>' // overlay already names Agam & the work
     : '<span class="credit-full">Homage to Yaacov Agam&rsquo;s ' +
       '<span style="font-style:italic">Fire &amp; Water Fountain</span> &middot; by Ayal Gelles</span>' +
       '<span class="credit-short">by Ayal Gelles</span>' +
-      '<span class="credit-url">ayal.github.io/AGAM</span>'; // always shown — kiosk isn't clickable
+      '<span class="credit-url">https://ayal.github.io/AGAM</span>'; // always shown — kiosk isn't clickable
   a.style.cssText =
     "display:inline-block;text-align:right;line-height:1.45;" +
     "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;" +
     // ghost text, no pill (same in kiosk and regular mode) — the art should
     // dominate; the soft dark shadow keeps it legible on the pale day sky
-    "color:rgba(255,255,255,.32);text-decoration:none;" +
+    "color:rgba(255,255,255,.5);text-decoration:none;" +
     "text-shadow:0 1px 10px rgba(0,0,0,.5);";
   return a;
 }
@@ -209,7 +209,7 @@ function makeCredit(): HTMLAnchorElement {
 const responsiveCss = document.createElement("style");
 responsiveCss.textContent =
   ".credit-full,.credit-short,.credit-url{white-space:nowrap}" +
-  ".credit-url{display:block;opacity:.72;letter-spacing:.09em;font-size:.92em}" +
+  ".credit-url{display:block;opacity:.9;letter-spacing:.09em;font-size:.92em}" +
   ".credit-short{display:none}" +
   "#ui-bar a,#ui-bar button{-webkit-tap-highlight-color:transparent}" +
   "@media (max-width:640px){" +
