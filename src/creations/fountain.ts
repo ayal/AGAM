@@ -683,13 +683,13 @@ export function createFountain(
       const uum = Math.cos(LAT) * Math.cos(Hm);
       const usm = Math.sin(LAT) * Math.cos(Hm);
       moonDisc.position.set(uem * SKY_R, uum * SKY_R, usm * SKY_R);
-      // daylight 0..1. Offset 0.20 (was 0.06) pulls dawn earlier & dusk later
-      // → SHORTER night; divisor 0.30 lands full daylight at se≈0.10, so the
-      // full-brightness plateau (true panel colours in full glory) lasts LONGER.
-      const dayL = Math.min(1, Math.max(0, (se + 0.20) / 0.30));
+      // daylight 0..1. Offset 0.32 pulls dawn earlier & dusk later → even
+      // SHORTER night; divisor 0.36 lands full daylight at se≈0.04, so the
+      // full-brightness plateau (true panel colours in full glory) is even LONGER.
+      const dayL = Math.min(1, Math.max(0, (se + 0.32) / 0.36));
       const nightL = 1 - dayL;
-      // sun near the horizon — wider band (0.31 vs 0.25) = a bit LONGER sunsets
-      const duskL = Math.max(0, 1 - Math.abs(se) / 0.31);
+      // sun near the horizon — wider band (0.38) = even LONGER sunsets
+      const duskL = Math.max(0, 1 - Math.abs(se) / 0.38);
       const sunMat = sunDisc.material as THREE.MeshBasicMaterial;
       // NO opacity modulation on either body, EVER — they are opaque meshes
       // and the planet's limb clipping them via the depth buffer is the ONLY
