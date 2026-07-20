@@ -14,8 +14,9 @@ import { createSkyDome } from "./sky";
 import { createPool } from "./water";
 
 // Chance that a build/recolor comes out black & white. Deliberately rare — a
-// B&W fountain is a striking exception, not a regular in the rotation.
-const MONO_CHANCE = 0.08;
+// B&W fountain is a striking exception, not a regular in the rotation. Drives
+// both fresh builds and the nightly recolor that cycles in auto/near mode.
+const MONO_CHANCE = 0.035;
 
 // Agam's Fire & Water Fountain (Dizengoff Square): five stacked rings, profile
 // bulging with a big, tall middle ring. Each ring is a ZIGZAG accordion of
