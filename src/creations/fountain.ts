@@ -121,9 +121,9 @@ export function createFountain(
   // (key 4.0–5.2 over ~1.3 day ambient). The old 1.6–2.5 moon hit 5:1 and
   // out-contrasted the sun; the 0.7–1.1 overcorrection left the moon barely
   // modelling the fountain and planet at all.
-  const moonStrength = 1.1 + Math.random() * 0.3;  // 1.1–1.4
+  const moonStrength = 1.8 + Math.random() * 0.4;  // 1.8–2.2 (brighter moonlight)
   const BG_DAY = new THREE.Color(0xb8d4e8); // proper pale-blue haze (was flat gray)
-  const BG_NIGHT = new THREE.Color(0x525866);
+  const BG_NIGHT = new THREE.Color(0x6b7284);
   const BG_DUSK = new THREE.Color().lerpColors(new THREE.Color(0xdfb08a), new THREE.Color(0xff6030), duskMood);
   const KEY_HIGH = new THREE.Color(0xfff2e0), KEY_LOW = new THREE.Color(0xff9f5e); // golden-hour amber
   const HEMI_DAY = new THREE.Color(0xffffff), HEMI_NIGHT = new THREE.Color(0x93a0c0);
@@ -144,7 +144,7 @@ export function createFountain(
   // same day/dusk/night blends as the lights, a warm glow pooled around the
   // sun's spot at golden hour, and hashed stars that twinkle in after dark.
   // The pool's mirror reflects it, so the water picks up the sky for free.
-  const ZEN_DAY = new THREE.Color(0x2e6eb8), ZEN_NIGHT = new THREE.Color(0x252c3d);
+  const ZEN_DAY = new THREE.Color(0x2e6eb8), ZEN_NIGHT = new THREE.Color(0x39445c);
   const ZEN_DUSK = new THREE.Color().lerpColors(new THREE.Color(0x7878a8), new THREE.Color(0x60258a), duskMood);
   const zenNow = new THREE.Color();
   const sky = createSkyDome(SKY_R);
@@ -729,7 +729,7 @@ export function createFountain(
       // noon key:ambient ratio is ~3.5:1: sunlit faces stay bright (key is
       // untouched) while shadow faces and the planet's night side actually
       // fall dark. Night floor (0.5) keeps the artwork visible by moonlight.
-      hemi.intensity = 0.5 + 0.6 * dayL; // range 0.5–1.1 (key at 4.0–5.2 dominates)
+      hemi.intensity = 0.8 + 0.6 * dayL; // range 0.8–1.4 (brighter night floor; key at 4.0–5.2 dominates)
       hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
       hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
       // horizon follows: day haze → GOLDEN dusk → night blue-gray; the clear
