@@ -121,7 +121,7 @@ export function createFountain(
   // (key 4.0–5.2 over ~1.3 day ambient). The old 1.6–2.5 moon hit 5:1 and
   // out-contrasted the sun; the 0.7–1.1 overcorrection left the moon barely
   // modelling the fountain and planet at all.
-  const moonStrength = 2.1 + Math.random() * 0.4;  // 2.1–2.5 (brighter moonlight)
+  const moonStrength = 2.5 + Math.random() * 0.5;  // 2.5–3.0 (brighter moonlight)
   const BG_DAY = new THREE.Color(0xb8d4e8); // proper pale-blue haze (was flat gray)
   const BG_NIGHT = new THREE.Color(0x6b7284);
   const BG_DUSK = new THREE.Color().lerpColors(new THREE.Color(0xdfb08a), new THREE.Color(0xff6030), duskMood);
@@ -543,6 +543,7 @@ export function createFountain(
   let fireLvl = 1;
   let waterLvl = 1;
   let lastT = 0;
+  let frameN = 0; // frame counter for throttling expensive per-frame work
   // periodic "rest" interludes: fire/water briefly fade to zero then return —
   // in EVERY mode, not just kiosk. Respects the toggles: a feature toggled off
   // stays off; a rest only dips one that's currently on.
@@ -583,6 +584,7 @@ export function createFountain(
     update: (time, autoRotate, env) => {
       const dt = Math.min(0.05, Math.max(0, time - lastT));
       lastT = time;
+      frameN++;
       if (autoRotate) {
         // auto/kiosk mode orbits the camera, so it asks us to hold the group
         // still (spinGroup === false) while the rings keep turning.
@@ -634,21 +636,27 @@ export function createFountain(
       // live canvases + cap vertex colors; nothing rebuilds, nothing fades) ----
       if (morph) {
         const k = Math.min(1, (time - morph.t0) / morph.dur);
-        const e = k * k * (3 - 2 * k); // smoothstep — eases both ends
-        for (const it of morph.items) {
-          const ctx = it.live.getContext("2d")!;
-          ctx.globalAlpha = 1;
-          ctx.drawImage(it.from, 0, 0);
-          ctx.globalAlpha = e;
-          ctx.drawImage(it.to, 0, 0);
-          ctx.globalAlpha = 1;
-          (it.mat.map as THREE.CanvasTexture).needsUpdate = true;
-        }
-        for (const cp of morph.caps) {
-          const attr = cp.geo.getAttribute("color") as THREE.BufferAttribute;
-          const arr = attr.array as Float32Array;
-          for (let i = 0; i < arr.length; i++) arr[i] = cp.from[i] + (cp.to[i] - cp.from[i]) * e;
-          attr.needsUpdate = true;
+        // The canvas composite + GPU texture re-upload is by far the heaviest
+        // per-frame work in the scene; doing it EVERY frame for the whole morph
+        // stutters weak GPUs. Refresh every 3rd frame (plus the final frame so
+        // it always lands exactly on the target) — the blend still looks smooth.
+        if (frameN % 3 === 0 || k >= 1) {
+          const e = k * k * (3 - 2 * k); // smoothstep — eases both ends
+          for (const it of morph.items) {
+            const ctx = it.live.getContext("2d")!;
+            ctx.globalAlpha = 1;
+            ctx.drawImage(it.from, 0, 0);
+            ctx.globalAlpha = e;
+            ctx.drawImage(it.to, 0, 0);
+            ctx.globalAlpha = 1;
+            (it.mat.map as THREE.CanvasTexture).needsUpdate = true;
+          }
+          for (const cp of morph.caps) {
+            const attr = cp.geo.getAttribute("color") as THREE.BufferAttribute;
+            const arr = attr.array as Float32Array;
+            for (let i = 0; i < arr.length; i++) arr[i] = cp.from[i] + (cp.to[i] - cp.from[i]) * e;
+            attr.needsUpdate = true;
+          }
         }
         if (k >= 1) morph = null;
       }
@@ -729,7 +737,7 @@ export function createFountain(
       // noon key:ambient ratio is ~3.5:1: sunlit faces stay bright (key is
       // untouched) while shadow faces and the planet's night side actually
       // fall dark. Night floor (0.5) keeps the artwork visible by moonlight.
-      hemi.intensity = 0.95 + 0.6 * dayL; // range 0.95–1.55 (brighter night floor; key at 4.0–5.2 dominates)
+      hemi.intensity = 1.15 + 0.6 * dayL; // range 1.15–1.75 (brighter night floor; key at 4.0–5.2 dominates)
       hemi.color.lerpColors(HEMI_NIGHT, HEMI_DAY, dayL).lerp(GOLD, duskL * 0.4);
       hemi.groundColor.lerpColors(GND_NIGHT, GND_DAY, dayL);
       // horizon follows: day haze → GOLDEN dusk → night blue-gray; the clear
@@ -756,7 +764,9 @@ export function createFountain(
 
       // non-crisp mode: refresh the cube map the pool reflects (hide the pool
       // during the capture to avoid feedback)
-      if (env && !crispPool) {
+      // cubeCam.update re-renders the WHOLE scene 6× — refresh the reflection
+      // every other frame; the pool ripples hide the half-rate update.
+      if (env && !crispPool && frameN % 2 === 0) {
         for (const w of waterMeshes) w.visible = false;
         cubeCam.update(env.renderer, env.scene);
         for (const w of waterMeshes) w.visible = true;

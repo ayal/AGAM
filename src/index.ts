@@ -38,10 +38,11 @@ const TEXT_ON =
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setClearColor(new THREE.Color(0xf4f1e8)); // gallery-wall cream
-// In kiosk mode cap the pixel ratio: a huge hi-DPI screen + the per-frame
-// cube-map pool capture is the most likely thing to cook the GPU over a
-// multi-day run.
-renderer.setPixelRatio(AUTO ? Math.min(window.devicePixelRatio, 1.75) : window.devicePixelRatio);
+// Cap the pixel ratio: a huge hi-DPI screen + the per-frame cube-map pool
+// capture is the most likely thing to cook the GPU. Kiosk runs stay a touch
+// crisper (1.75); interactive sessions cap at 1.5 so a 4K Windows display
+// fullscreen doesn't choke on the fragment load.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, AUTO ? 1.75 : 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -189,11 +190,11 @@ function makeCredit(): HTMLAnchorElement {
   a.target = "_blank";
   a.rel = "noopener";
   a.innerHTML = TEXT_ON
-    ? '<span class="credit-url">https://ayal.github.io/AGAM</span>' // overlay already names Agam & the work
+    ? '<span class="credit-url">ayal.github.io/AGAM</span>' // overlay already names Agam & the work
     : '<span class="credit-full">Homage to Yaacov Agam&rsquo;s ' +
       '<span style="font-style:italic">Fire &amp; Water Fountain</span> &middot; by Ayal Gelles</span>' +
       '<span class="credit-short">by Ayal Gelles</span>' +
-      '<span class="credit-url">https://ayal.github.io/AGAM</span>'; // always shown — kiosk isn't clickable
+      '<span class="credit-url">ayal.github.io/AGAM</span>'; // always shown — kiosk isn't clickable
   a.style.cssText =
     "display:inline-block;text-align:right;line-height:1.45;" +
     "font:12px 'Helvetica Neue',Arial,sans-serif;letter-spacing:.04em;" +
@@ -742,8 +743,9 @@ if (!THUMB) {
   let holdDir = 1;
   let lastNow = 0;
   // Pattern-change cadence, in simulated midnights: fresh colours + patterns
-  // at EVERY midnight (~27s of wall time per day).
-  const PATTERN_DAYS = 1;
+  // every 3rd midnight (~81s of wall time) — rarer morphs mean the heavy
+  // canvas re-upload spikes hit far less often.
+  const PATTERN_DAYS = 3;
   let lastDayCount = 0;
 
   autoTick = (now: number) => {
