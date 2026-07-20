@@ -683,9 +683,13 @@ export function createFountain(
       const uum = Math.cos(LAT) * Math.cos(Hm);
       const usm = Math.sin(LAT) * Math.cos(Hm);
       moonDisc.position.set(uem * SKY_R, uum * SKY_R, usm * SKY_R);
-      const dayL = Math.min(1, Math.max(0, (se + 0.06) / 0.24)); // daylight 0..1
+      // daylight 0..1. Offset 0.20 (was 0.06) pulls dawn earlier & dusk later
+      // → SHORTER night; divisor 0.30 lands full daylight at se≈0.10, so the
+      // full-brightness plateau (true panel colours in full glory) lasts LONGER.
+      const dayL = Math.min(1, Math.max(0, (se + 0.20) / 0.30));
       const nightL = 1 - dayL;
-      const duskL = Math.max(0, 1 - Math.abs(se) / 0.25); // sun near the horizon
+      // sun near the horizon — wider band (0.31 vs 0.25) = a bit LONGER sunsets
+      const duskL = Math.max(0, 1 - Math.abs(se) / 0.31);
       const sunMat = sunDisc.material as THREE.MeshBasicMaterial;
       // NO opacity modulation on either body, EVER — they are opaque meshes
       // and the planet's limb clipping them via the depth buffer is the ONLY
@@ -712,7 +716,9 @@ export function createFountain(
       // shadow — the fountain rotates and you see it sweep.
       key.position.set(sxp, Math.max(syp, 8), szp);
       key.intensity = keyStrength * dayL;
-      key.color.lerpColors(KEY_LOW, KEY_HIGH, Math.min(1, Math.max(0, se / 0.55)));
+      // reach neutral daylight white sooner (se/0.42 vs /0.55) so the panels'
+      // TRUE colours show in full glory for more of the day, not amber-cast
+      key.color.lerpColors(KEY_LOW, KEY_HIGH, Math.min(1, Math.max(0, se / 0.42)));
       // clouds: lit per-sprite by their TRUE angle to the sun (the key light's
       // own y is clamped above the horizon, so it can't gate the night side)
       if (env) clouds.update(env.renderer, key, dayL, duskL, sunDisc.getWorldPosition(sunWorld).normalize(), dt);
