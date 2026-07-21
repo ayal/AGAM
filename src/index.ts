@@ -656,12 +656,12 @@ if (!THUMB) {
   // loop keeps circulating and showing the scene from new angles instead of
   // lingering at the basin.
   // Two shot mixes (cumulative probability cut-offs): the default one, and the
-  // ?near variant where ~60% of legs are the close, eye-level "person at the
-  // basin" shots (push-in + from-below) and they also run longer, ~88% stay at
-  // close/mid range, and wide (8%) / planet (4%) are rare punctuation — the
+  // ?near variant where ~66% of legs are the close, eye-level "person at the
+  // basin" shots (push-in + from-below) and they also run longer, ~90% stay at
+  // close/mid range, and wide (7%) / planet (3%) are rare punctuation — the
   // composition stays on the fountain, not "too much of the surroundings".
   const MIX = NEAR
-    ? { pushIn: 0.26, below: 0.60, rise: 0.70, mid: 0.88, wide: 0.96 }
+    ? { pushIn: 0.30, below: 0.66, rise: 0.75, mid: 0.90, wide: 0.97 }
     : { pushIn: 0.1, below: 0.34, rise: 0.48, mid: 0.7, wide: 0.88 };
   let lastClose = false;
   const pickLeg = (now: number) => {
