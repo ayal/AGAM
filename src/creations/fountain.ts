@@ -684,10 +684,11 @@ export function createFountain(
       const uum = Math.cos(LAT) * Math.cos(Hm);
       const usm = Math.sin(LAT) * Math.cos(Hm);
       moonDisc.position.set(uem * SKY_R, uum * SKY_R, usm * SKY_R);
-      // daylight 0..1. Offset 0.48 pulls dawn earlier & dusk later → even
-      // SHORTER dark night (~8.5s); divisor 0.52 keeps full daylight landing
-      // at se≈0.04, so the full-brightness plateau stays long.
-      const dayL = Math.min(1, Math.max(0, (se + 0.48) / 0.52));
+      // daylight 0..1. Offset 0.65 pulls dawn earlier & dusk later → dark
+      // night is just ~6s of the 27s cycle (arccos(0.65/cosLAT)/180° · 27);
+      // divisor 0.69 keeps full daylight landing at se≈0.04, so the
+      // full-brightness plateau stays long.
+      const dayL = Math.min(1, Math.max(0, (se + 0.65) / 0.69));
       const nightL = 1 - dayL;
       // sun near the horizon — wider band (0.38) = even LONGER sunsets
       const duskL = Math.max(0, 1 - Math.abs(se) / 0.38);
